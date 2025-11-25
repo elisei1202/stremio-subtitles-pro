@@ -1,17 +1,8 @@
 require('dotenv').config();
 const { addonBuilder, serveHTTP } = require('stremio-addon-sdk');
 const axios = require('axios');
+const srtParser2 = require('srt-parser-2');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-
-// Dynamic import pentru srt-parser-2 (ES Module)
-let SrtParser2 = null;
-async function getSrtParser() {
-    if (!SrtParser2) {
-        const module = await import('srt-parser-2');
-        SrtParser2 = module.default || module.SRT || module;
-    }
-    return SrtParser2;
-}
 const crypto = require('crypto');
 const express = require('express');
 const mongoose = require('mongoose');
@@ -247,8 +238,7 @@ Translated text in ${targetLangName}:`;
 
 async function translateSubtitle(srtContent, sourceLang, targetLang) {
     try {
-        const SrtParser = await getSrtParser();
-        const parser = new SrtParser();
+        const parser = new srtParser2();
         const parsed = parser.fromSrt(srtContent);
         
         console.log(`📝 Traducere ${parsed.length} linii: ${sourceLang} -> ${targetLang}`);
