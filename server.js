@@ -16,7 +16,10 @@ const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 const SUBSCRIPTION_PRICE = 1.00; // $1 pentru 3 luni
 
 // Conectare MongoDB
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/stremio-subtitles');
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/stremio-subtitles').catch(err => {
+    console.error('⚠️ MongoDB connection error:', err.message);
+    console.log('⏳ Continuând fără MongoDB (va funcționa doar cu MongoDB Atlas)');
+});
 
 // Schema User
 const userSchema = new mongoose.Schema({
