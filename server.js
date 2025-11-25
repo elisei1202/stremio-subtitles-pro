@@ -1080,30 +1080,31 @@ app.get('/health', (req, res) => {
     });
 });
 
-// Pornire server
-const PORT = process.env.PORT || 7000;
-console.log('🚀 Starting server on port:', PORT);
-console.log('🔧 Environment variables:', {
-    GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
-    OPENSUBTITLES_API_KEY: !!process.env.OPENSUBTITLES_API_KEY,
-    STRIPE_SECRET_KEY: !!process.env.STRIPE_SECRET_KEY,
-    MONGODB_URI: !!process.env.MONGODB_URI,
-    PORT: process.env.PORT
-});
-
-// Error handling pentru server
+// Error handling pentru server - TREBUIE ÎNAINTE DE app.listen
 process.on('unhandledRejection', (err) => {
-    console.error('❌ Unhandled Rejection:', err);
-    console.error('Stack:', err.stack);
+    console.error('❌ Unhandled Rejection:', err.message);
+    if (err.stack) console.error('Stack:', err.stack);
 });
 
 process.on('uncaughtException', (err) => {
-    console.error('❌ Uncaught Exception:', err);
-    console.error('Stack:', err.stack);
-    // Nu exit imediat, lasă aplicația să încerce să răspundă
+    console.error('❌ Uncaught Exception:', err.message);
+    if (err.stack) console.error('Stack:', err.stack);
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+// Pornire server
+const PORT = process.env.PORT || 7000;
+
+console.log('🚀 Starting server...');
+console.log('📋 PORT:', PORT);
+console.log('🔧 Env vars:', {
+    hasGemini: !!process.env.GEMINI_API_KEY,
+    hasOpenSubtitles: !!process.env.OPENSUBTITLES_API_KEY,
+    hasStripe: !!process.env.STRIPE_SECRET_KEY,
+    hasMongoDB: !!process.env.MONGODB_URI
+});
+
+try {
+    app.listen(PORT, '0.0.0.0', () => {
     console.log('\n' + '='.repeat(70));
     console.log('🎬 STREMIO MULTI-LANGUAGE SUBTITLES - PRODUCTION');
     console.log('='.repeat(70));
@@ -1117,10 +1118,19 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`🔑 Stripe:              ${process.env.STRIPE_SECRET_KEY ? '✅' : '❌'}`);
     console.log(`💾 MongoDB:             ${mongoose.connection.readyState === 1 ? '✅ Connected' : '⏳ Connecting...'}`);
     console.log('='.repeat(70) + '\n');
-}).on('error', (err) => {
-    console.error('❌ Server error:', err);
+    console.log('✅ Server started successfully!');
+    }).on('error', (err) => {
+        console.error('❌ Server error:', err.message);
+        if (err.code === 'EADDRINUSE') {
+            console.error('❌ Port', PORT, 'is already in use!');
+        }
+        process.exit(1);
+    });
+} catch (error) {
+    console.error('❌ Failed to start server:', error.message);
+    if (error.stack) console.error('Stack:', error.stack);
     process.exit(1);
-});
+}
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
