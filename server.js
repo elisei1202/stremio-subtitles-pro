@@ -385,13 +385,7 @@ function createUserManifest(userId, preferredLang, baseUrl, apiKey) {
         version: '2.0.0',
         name: `Subtitrări ${SUPPORTED_LANGUAGES[preferredLang]} AI`,
         description: `Caută și traduce automat subtitrări în ${SUPPORTED_LANGUAGES[preferredLang]} folosind AI. Suportă toate limbile majore.`,
-        resources: [
-            {
-                name: 'subtitles',
-                types: ['movie', 'series'],
-                idPrefixes: ['tt']
-            }
-        ],
+        resources: ['subtitles'],
         types: ['movie', 'series'],
         catalogs: [],
         idPrefixes: ['tt'],
@@ -399,11 +393,6 @@ function createUserManifest(userId, preferredLang, baseUrl, apiKey) {
         behaviorHints: {
             configurable: true,
             configurationRequired: false
-        },
-        // Specifică că resursa de subtitrări este la această adresă
-        addon: {
-            type: 'subtitles',
-            url: `${baseUrl}/manifest/${apiKey}/subtitles`
         }
     };
 }
@@ -1468,21 +1457,31 @@ app.get('/manifest/:apiKey', async (req, res) => {
 app.get('/manifest/:apiKey/subtitles/:type/:id.json', async (req, res) => {
     try {
         const { apiKey, type, id } = req.params;
+        
+        console.log(`🔍 Stremio cere subtitrări: type=${type}, id=${id}, apiKey=${apiKey?.substring(0, 10)}...`);
+        
         const user = await User.findOne({ apiKey });
 
         if (!user) {
+            console.log(`❌ User nu există pentru apiKey: ${apiKey?.substring(0, 10)}...`);
             return res.status(401).json({ subtitles: [] });
         }
 
+        console.log(`✅ User găsit: ${user.email}, limba preferată: ${user.preferredLanguage}`);
+
         // Verificare abonament
         if (user.subscriptionStatus === 'expired') {
+            console.log(`⚠️ Abonament expirat pentru user: ${user.email}`);
             return res.json({ subtitles: [] });
         }
 
         const [imdbId, season, episode] = id.split(':');
+        console.log(`📺 IMDb ID: ${imdbId}, Season: ${season || 'N/A'}, Episode: ${episode || 'N/A'}`);
+        
         const token = await getOpenSubtitlesToken();
 
         if (!token) {
+            console.log('❌ Nu s-a putut obține token OpenSubtitles');
             return res.json({ subtitles: [] });
         }
 
@@ -1492,6 +1491,8 @@ app.get('/manifest/:apiKey/subtitles/:type/:id.json', async (req, res) => {
             episode ? parseInt(episode) : null,
             token
         );
+
+        console.log(`📝 Găsite ${subtitles.length} subtitrări de la OpenSubtitles`);
 
         const results = [];
         const targetLang = user.preferredLanguage;
@@ -1554,9 +1555,11 @@ app.get('/manifest/:apiKey/subtitles/:type/:id.json', async (req, res) => {
             console.log(`🔄 Oferite ${results.length} opțiuni de traducere din: ${sortedLangs.slice(0, 5).join(', ')}`);
         }
 
+        console.log(`✅ Returnez ${results.length} subtitrări pentru limba: ${targetLang}`);
         res.json({ subtitles: results });
     } catch (error) {
-        console.error('Eroare subtitles handler:', error);
+        console.error('❌ Eroare subtitles handler:', error.message);
+        if (error.stack) console.error('Stack:', error.stack);
         res.json({ subtitles: [] });
     }
 });
