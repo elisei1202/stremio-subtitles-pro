@@ -18,23 +18,36 @@ const SUBSCRIPTION_PRICE = 1.00; // $1 pentru 3 luni
 // Conectare MongoDB
 if (process.env.MONGODB_URI) {
     console.log('🔄 Încearcă conexiune MongoDB...');
-    console.log('📋 MONGODB_URI:', process.env.MONGODB_URI.substring(0, 30) + '...');
+    console.log('📋 MONGODB_URI setat:', !!process.env.MONGODB_URI);
+    console.log('📋 MONGODB_URI preview:', process.env.MONGODB_URI.substring(0, 30) + '...');
     
-    mongoose.connect(process.env.MONGODB_URI, {
-        serverSelectionTimeoutMS: 10000, // 10 secunde timeout
-        socketTimeoutMS: 45000,
-        connectTimeoutMS: 10000
-    }).then(() => {
-        console.log('✅ MongoDB conectat cu succes!');
-    }).catch(err => {
-        console.error('❌ MongoDB connection error:', err.message);
-        console.error('❌ Error details:', {
-            name: err.name,
-            code: err.code,
-            codeName: err.codeName
-        });
-        console.log('⏳ Continuând fără MongoDB - va funcționa dar nu vor fi salvate date');
-    });
+    // Conectare cu retry logic
+    async function connectMongoDB() {
+        try {
+            await mongoose.connect(process.env.MONGODB_URI, {
+                serverSelectionTimeoutMS: 15000, // 15 secunde timeout
+                socketTimeoutMS: 45000,
+                connectTimeoutMS: 15000,
+                maxPoolSize: 10,
+                retryWrites: true,
+                w: 'majority'
+            });
+            console.log('✅ MongoDB conectat cu succes!');
+        } catch (err) {
+            console.error('❌ MongoDB connection error:', err.message);
+            console.error('❌ Error details:', {
+                name: err.name,
+                code: err.code,
+                codeName: err.codeName
+            });
+            
+            // Retry după 5 secunde
+            console.log('⏳ Retry conexiune MongoDB în 5 secunde...');
+            setTimeout(connectMongoDB, 5000);
+        }
+    }
+    
+    connectMongoDB();
     
     // Event handlers pentru MongoDB
     mongoose.connection.on('connected', () => {
@@ -770,10 +783,28 @@ app.post('/api/register', async (req, res) => {
             return res.status(400).json({ error: 'Email și limba sunt obligatorii' });
         }
 
-        // Verifică conexiunea MongoDB
+        // Verifică conexiunea MongoDB - așteaptă dacă se conectează
+        if (mongoose.connection.readyState === 0) {
+            console.log('🔄 MongoDB se conectează... așteaptă 2 secunde');
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+        
         if (mongoose.connection.readyState !== 1) {
-            console.error('❌ MongoDB nu este conectat!');
-            return res.status(503).json({ error: 'Baza de date nu este disponibilă. Te rugăm încearcă din nou.' });
+            console.error('❌ MongoDB nu este conectat! State:', mongoose.connection.readyState);
+            console.error('❌ MONGODB_URI setat:', !!process.env.MONGODB_URI);
+            
+            // Încearcă să se conecteze din nou
+            if (process.env.MONGODB_URI && mongoose.connection.readyState === 0) {
+                try {
+                    await mongoose.connect(process.env.MONGODB_URI);
+                    console.log('✅ MongoDB conectat după retry!');
+                } catch (err) {
+                    console.error('❌ MongoDB connection failed on retry:', err.message);
+                    return res.status(503).json({ error: 'Baza de date nu este disponibilă. Verifică MONGODB_URI în Railway Variables.' });
+                }
+            } else {
+                return res.status(503).json({ error: 'Baza de date nu este disponibilă. Verifică MONGODB_URI în Railway Variables.' });
+            }
         }
 
         // Verifică dacă utilizatorul există
