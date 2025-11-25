@@ -17,24 +17,40 @@ const SUBSCRIPTION_PRICE = 1.00; // $1 pentru 3 luni
 
 // Conectare MongoDB
 if (process.env.MONGODB_URI) {
-    mongoose.connect(process.env.MONGODB_URI).then(() => {
+    console.log('🔄 Încearcă conexiune MongoDB...');
+    console.log('📋 MONGODB_URI:', process.env.MONGODB_URI.substring(0, 30) + '...');
+    
+    mongoose.connect(process.env.MONGODB_URI, {
+        serverSelectionTimeoutMS: 10000, // 10 secunde timeout
+        socketTimeoutMS: 45000,
+        connectTimeoutMS: 10000
+    }).then(() => {
         console.log('✅ MongoDB conectat cu succes!');
     }).catch(err => {
         console.error('❌ MongoDB connection error:', err.message);
+        console.error('❌ Error details:', {
+            name: err.name,
+            code: err.code,
+            codeName: err.codeName
+        });
         console.log('⏳ Continuând fără MongoDB - va funcționa dar nu vor fi salvate date');
     });
     
     // Event handlers pentru MongoDB
     mongoose.connection.on('connected', () => {
-        console.log('✅ MongoDB connected');
+        console.log('✅ MongoDB connected event');
     });
     
     mongoose.connection.on('error', (err) => {
-        console.error('❌ MongoDB error:', err.message);
+        console.error('❌ MongoDB error event:', err.message);
     });
     
     mongoose.connection.on('disconnected', () => {
-        console.log('⚠️ MongoDB disconnected');
+        console.log('⚠️ MongoDB disconnected event');
+    });
+    
+    mongoose.connection.on('connecting', () => {
+        console.log('🔄 MongoDB connecting...');
     });
 } else {
     console.log('⚠️ MONGODB_URI nu este setat - aplicația va funcționa dar nu vor fi salvate date');
