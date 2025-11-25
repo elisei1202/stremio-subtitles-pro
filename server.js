@@ -17,9 +17,24 @@ const SUBSCRIPTION_PRICE = 1.00; // $1 pentru 3 luni
 
 // Conectare MongoDB
 if (process.env.MONGODB_URI) {
-    mongoose.connect(process.env.MONGODB_URI).catch(err => {
-        console.error('⚠️ MongoDB connection error:', err.message);
+    mongoose.connect(process.env.MONGODB_URI).then(() => {
+        console.log('✅ MongoDB conectat cu succes!');
+    }).catch(err => {
+        console.error('❌ MongoDB connection error:', err.message);
         console.log('⏳ Continuând fără MongoDB - va funcționa dar nu vor fi salvate date');
+    });
+    
+    // Event handlers pentru MongoDB
+    mongoose.connection.on('connected', () => {
+        console.log('✅ MongoDB connected');
+    });
+    
+    mongoose.connection.on('error', (err) => {
+        console.error('❌ MongoDB error:', err.message);
+    });
+    
+    mongoose.connection.on('disconnected', () => {
+        console.log('⚠️ MongoDB disconnected');
     });
 } else {
     console.log('⚠️ MONGODB_URI nu este setat - aplicația va funcționa dar nu vor fi salvate date');
@@ -739,6 +754,12 @@ app.post('/api/register', async (req, res) => {
             return res.status(400).json({ error: 'Email și limba sunt obligatorii' });
         }
 
+        // Verifică conexiunea MongoDB
+        if (mongoose.connection.readyState !== 1) {
+            console.error('❌ MongoDB nu este conectat!');
+            return res.status(503).json({ error: 'Baza de date nu este disponibilă. Te rugăm încearcă din nou.' });
+        }
+
         // Verifică dacă utilizatorul există
         let user = await User.findOne({ email });
 
@@ -782,8 +803,19 @@ app.post('/api/register', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Eroare înregistrare:', error);
-        res.status(500).json({ error: 'Eroare server' });
+        console.error('❌ Eroare înregistrare:', error.message);
+        console.error('Stack:', error.stack);
+        
+        // Eroare mai detaliată pentru debugging
+        if (error.name === 'MongoServerError' || error.name === 'MongoNetworkError') {
+            return res.status(503).json({ error: 'Eroare conexiune baza de date. Te rugăm încearcă din nou.' });
+        }
+        
+        if (error.code === 11000) {
+            return res.status(409).json({ error: 'Email-ul este deja înregistrat' });
+        }
+        
+        res.status(500).json({ error: 'Eroare server: ' + error.message });
     }
 });
 
