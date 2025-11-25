@@ -379,7 +379,7 @@ async function verifyApiKey(req, res, next) {
 }
 
 // Manifest dinamic per user
-function createUserManifest(userId, preferredLang) {
+function createUserManifest(userId, preferredLang, baseUrl) {
     return {
         id: `ro.subtitle.translator.${userId}`,
         version: '2.0.0',
@@ -393,6 +393,10 @@ function createUserManifest(userId, preferredLang) {
         behaviorHints: {
             configurable: true,
             configurationRequired: false
+        },
+        config: {
+            url: `${baseUrl}/configure`,
+            type: 'html'
         }
     };
 }
@@ -415,6 +419,300 @@ app.use((req, res, next) => {
 
 // Static files pentru dashboard
 app.use(express.static('public'));
+
+// Pagina de configurare pentru Stremio Addon
+app.get('/configure', (req, res) => {
+    const apiKey = req.query.apiKey || '';
+    
+    res.send(`
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configurare Addon - Stremio Subtitles</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 500px;
+            width: 100%;
+            padding: 40px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+        input[type="text"], input[type="email"], select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+        .info-box {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border-left: 4px solid #667eea;
+        }
+        .info-box p {
+            margin: 5px 0;
+            color: #555;
+            font-size: 14px;
+        }
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 10px 0;
+            display: none;
+        }
+        .success {
+            background: #efe;
+            color: #3c3;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 10px 0;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 Configurare Addon Stremio</h1>
+        <p class="subtitle">Configurează limba preferată pentru subtitrări</p>
+        
+        <div id="errorMsg" class="error"></div>
+        <div id="successMsg" class="success"></div>
+        
+        <div id="configForm">
+            <div class="form-group">
+                <label for="apiKey">API Key:</label>
+                <input type="text" id="apiKey" value="${apiKey}" placeholder="Introdu API Key-ul tău">
+            </div>
+            
+            <div class="form-group">
+                <label for="language">Limba preferată:</label>
+                <select id="language">
+                    ${Object.entries(SUPPORTED_LANGUAGES).map(([code, name]) => 
+                        `<option value="${code}">${name}</option>`
+                    ).join('')}
+                </select>
+            </div>
+            
+            <button type="button" class="btn" onclick="loadConfig()">
+                📥 Încarcă Configurare
+            </button>
+            
+            <button type="button" class="btn" onclick="saveConfig()" style="margin-top: 10px; background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
+                💾 Salvează Configurare
+            </button>
+        </div>
+        
+        <div id="userInfo" style="display: none;">
+            <div class="info-box">
+                <p><strong>Status:</strong> <span id="userStatus"></span></p>
+                <p><strong>Traduceri folosite:</strong> <span id="translationsCount"></span></p>
+                <p><strong>Abonament până:</strong> <span id="subscriptionEnd"></span></p>
+                <p><strong>Limba configurată:</strong> <span id="currentLanguage"></span></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SUPPORTED_LANGUAGES = ${JSON.stringify(SUPPORTED_LANGUAGES)};
+        
+        async function loadConfig() {
+            const apiKey = document.getElementById('apiKey').value.trim();
+            if (!apiKey) {
+                showError('⚠️ Introdu API Key-ul!');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/user/config?apiKey=' + encodeURIComponent(apiKey));
+                const data = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('language').value = data.preferredLanguage || 'ro';
+                    document.getElementById('userStatus').textContent = data.subscriptionStatus || 'trial';
+                    document.getElementById('translationsCount').textContent = 
+                        (data.translationsUsed || 0) + ' / ' + (data.subscriptionStatus === 'trial' ? (data.freeTranslationsLimit || 5) : '∞');
+                    document.getElementById('subscriptionEnd').textContent = 
+                        data.subscriptionEndDate ? new Date(data.subscriptionEndDate).toLocaleDateString() : 'N/A';
+                    document.getElementById('currentLanguage').textContent = 
+                        SUPPORTED_LANGUAGES[data.preferredLanguage] || 'Română';
+                    
+                    document.getElementById('configForm').style.display = 'none';
+                    document.getElementById('userInfo').style.display = 'block';
+                    showSuccess('✅ Configurare încărcată!');
+                } else {
+                    showError(data.error || 'Eroare la încărcare configurare');
+                }
+            } catch (error) {
+                showError('Eroare de conexiune');
+            }
+        }
+        
+        async function saveConfig() {
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const language = document.getElementById('language').value;
+            
+            if (!apiKey) {
+                showError('⚠️ Introdu API Key-ul!');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/user/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ apiKey, preferredLanguage: language })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showSuccess('✅ Configurare salvată! Limba ta preferată este: ' + SUPPORTED_LANGUAGES[language]);
+                    setTimeout(() => {
+                        window.close();
+                    }, 2000);
+                } else {
+                    showError(data.error || 'Eroare la salvare');
+                }
+            } catch (error) {
+                showError('Eroare de conexiune');
+            }
+        }
+        
+        function showError(msg) {
+            const el = document.getElementById('errorMsg');
+            el.textContent = msg;
+            el.style.display = 'block';
+            setTimeout(() => el.style.display = 'none', 5000);
+        }
+        
+        function showSuccess(msg) {
+            const el = document.getElementById('successMsg');
+            el.textContent = msg;
+            el.style.display = 'block';
+            setTimeout(() => el.style.display = 'none', 5000);
+        }
+        
+        // Auto-load dacă există API key în URL
+        if (document.getElementById('apiKey').value) {
+            loadConfig();
+        }
+    </script>
+</body>
+</html>
+    `);
+});
+
+// Endpoint pentru obținere configurare user
+app.get('/api/user/config', async (req, res) => {
+    const apiKey = req.query.apiKey;
+    
+    if (!apiKey) {
+        return res.status(400).json({ error: 'API Key lipsește' });
+    }
+    
+    try {
+        const user = await User.findOne({ apiKey });
+        if (!user) {
+            return res.status(404).json({ error: 'User nu există' });
+        }
+        
+        res.json({
+            preferredLanguage: user.preferredLanguage,
+            subscriptionStatus: user.subscriptionStatus,
+            translationsUsed: user.translationsUsed,
+            freeTranslationsLimit: user.freeTranslationsLimit,
+            subscriptionEndDate: user.subscriptionEndDate
+        });
+    } catch (error) {
+        console.error('Eroare obținere config:', error);
+        res.status(500).json({ error: 'Eroare server' });
+    }
+});
+
+// Endpoint pentru salvare configurare user
+app.post('/api/user/config', async (req, res) => {
+    const { apiKey, preferredLanguage } = req.body;
+    
+    if (!apiKey) {
+        return res.status(400).json({ error: 'API Key lipsește' });
+    }
+    
+    if (!preferredLanguage || !SUPPORTED_LANGUAGES[preferredLanguage]) {
+        return res.status(400).json({ error: 'Limbă invalidă' });
+    }
+    
+    try {
+        const user = await User.findOne({ apiKey });
+        if (!user) {
+            return res.status(404).json({ error: 'User nu există' });
+        }
+        
+        user.preferredLanguage = preferredLanguage;
+        await user.save();
+        
+        res.json({ success: true, message: 'Configurare salvată' });
+    } catch (error) {
+        console.error('Eroare salvare config:', error);
+        res.status(500).json({ error: 'Eroare server' });
+    }
+});
 
 // Pagina principală
 app.get('/', (req, res) => {
@@ -876,7 +1174,8 @@ app.get('/manifest/:apiKey', async (req, res) => {
             return res.status(404).json({ error: 'API Key invalid' });
         }
 
-        const manifest = createUserManifest(user._id, user.preferredLanguage);
+        const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+        const manifest = createUserManifest(user._id, user.preferredLanguage, baseUrl);
         res.json(manifest);
     } catch (error) {
         console.error('Eroare manifest:', error);
