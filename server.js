@@ -170,6 +170,10 @@ async function downloadSubtitle(fileId, token) {
 
 async function translateWithGemini(text, sourceLang, targetLang) {
     try {
+        if (!genAI) {
+            console.error('❌ Gemini AI nu este inițializat - lipsește API key');
+            return null;
+        }
         const model = genAI.getGenerativeModel({ 
             model: "gemini-1.5-flash",
             generationConfig: {
@@ -1074,7 +1078,7 @@ app.get('/health', (req, res) => {
 
 // Pornire server
 const PORT = process.env.PORT || 7000;
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log('\n' + '='.repeat(70));
     console.log('🎬 STREMIO MULTI-LANGUAGE SUBTITLES - PRODUCTION');
     console.log('='.repeat(70));
