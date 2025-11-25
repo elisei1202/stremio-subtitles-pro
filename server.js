@@ -1164,23 +1164,275 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
-// Manifest personalizat per user
 // Pagina de configurare pentru un addon specific (Stremio accesează /manifest/:apiKey/configure)
 app.get('/manifest/:apiKey/configure', async (req, res) => {
     const { apiKey } = req.params;
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
     
-    // Verifică dacă user-ul există
+    // Obține user-ul și configurația curentă
+    let user = null;
+    let currentLanguage = 'ro';
+    
     try {
-        const user = await User.findOne({ apiKey });
+        user = await User.findOne({ apiKey });
         if (!user) {
-            return res.status(404).send('Addon nu există');
+            return res.status(404).send(`
+                <html>
+                <body style="font-family: Arial; text-align: center; padding: 50px;">
+                    <h1>❌ Addon nu există</h1>
+                    <p>API Key-ul este invalid.</p>
+                </body>
+                </html>
+            `);
         }
+        currentLanguage = user.preferredLanguage || 'ro';
     } catch (error) {
         console.error('Eroare verificare user:', error);
+        return res.status(500).send('Eroare server');
     }
     
-    // Redirect către pagina de configurare cu API key
-    res.redirect(`/configure?apiKey=${apiKey}`);
+    // Returnează pagina HTML de configurare DIRECT (Stremio așteaptă HTML, nu redirect)
+    res.send(`
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configurare Addon - Stremio Subtitles</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .form-group {
+            margin-bottom: 25px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 16px;
+        }
+        select {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            background: white;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 16px 32px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+            margin-top: 10px;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+        .btn:active {
+            transform: translateY(0);
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .info-box {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border-left: 4px solid #667eea;
+        }
+        .info-box p {
+            margin: 8px 0;
+            color: #555;
+            font-size: 14px;
+        }
+        .info-box strong {
+            color: #333;
+        }
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            display: none;
+            border-left: 4px solid #c33;
+        }
+        .success {
+            background: #efe;
+            color: #3c3;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            display: none;
+            border-left: 4px solid #3c3;
+        }
+        .instructions {
+            background: #e3f2fd;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border-left: 4px solid #2196f3;
+        }
+        .instructions h3 {
+            color: #1976d2;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+        .instructions ol {
+            margin-left: 20px;
+            color: #555;
+        }
+        .instructions li {
+            margin: 8px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 Configurare Addon Stremio</h1>
+        <p class="subtitle">Selectează limba preferată pentru traducerea subtitrarilor</p>
+        
+        <div id="errorMsg" class="error"></div>
+        <div id="successMsg" class="success"></div>
+        
+        <form id="configForm" onsubmit="saveConfig(event); return false;">
+            <div class="form-group">
+                <label for="language">🌍 Limba preferată pentru subtitrări:</label>
+                <select id="language" name="language" required>
+                    ${Object.entries(SUPPORTED_LANGUAGES).map(([code, name]) => 
+                        `<option value="${code}" ${code === currentLanguage ? 'selected' : ''}>${name}</option>`
+                    ).join('')}
+                </select>
+            </div>
+            
+            <button type="submit" class="btn">
+                💾 Salvează Configurarea
+            </button>
+        </form>
+        
+        <div class="info-box" style="margin-top: 30px;">
+            <p><strong>📊 Status Cont:</strong></p>
+            <p><strong>Status:</strong> <span id="userStatus">${user.subscriptionStatus || 'trial'}</span></p>
+            <p><strong>Traduceri folosite:</strong> <span id="translationsCount">${user.translationsUsed || 0} / ${user.subscriptionStatus === 'trial' ? (user.freeTranslationsLimit || 5) : '∞'}</span></p>
+            ${user.subscriptionEndDate ? `<p><strong>Abonament până:</strong> ${new Date(user.subscriptionEndDate).toLocaleDateString('ro-RO')}</p>` : ''}
+        </div>
+        
+        <div class="instructions">
+            <h3>📖 Cum funcționează:</h3>
+            <ol>
+                <li>Selectează limba preferată din meniul de mai sus</li>
+                <li>Apasă "Salvează Configurarea"</li>
+                <li>Addon-ul va căuta automat subtitrări în limba selectată</li>
+                <li>Dacă nu găsește subtitrări native, va traduce automat folosind AI</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        const SUPPORTED_LANGUAGES = ${JSON.stringify(SUPPORTED_LANGUAGES)};
+        const apiKey = '${apiKey}';
+        const baseUrl = '${baseUrl}';
+        
+        async function saveConfig(event) {
+            event.preventDefault();
+            const language = document.getElementById('language').value;
+            
+            // Show loading
+            const btn = event.target.querySelector('button[type="submit"]');
+            const originalText = btn.textContent;
+            btn.textContent = '⏳ Se salvează...';
+            btn.disabled = true;
+            
+            try {
+                const response = await fetch('/api/user/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ apiKey: apiKey, preferredLanguage: language })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showSuccess('✅ Configurare salvată cu succes! Limba ta preferată este acum: ' + SUPPORTED_LANGUAGES[language]);
+                    
+                    // Reload page after 2 seconds to show updated config
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 2000);
+                } else {
+                    showError(data.error || 'Eroare la salvare configurare. Te rugăm încearcă din nou.');
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }
+            } catch (error) {
+                showError('Eroare de conexiune. Te rugăm verifică internetul și încearcă din nou.');
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        }
+        
+        function showError(msg) {
+            const el = document.getElementById('errorMsg');
+            el.textContent = msg;
+            el.style.display = 'block';
+            document.getElementById('successMsg').style.display = 'none';
+            setTimeout(() => el.style.display = 'none', 5000);
+        }
+        
+        function showSuccess(msg) {
+            const el = document.getElementById('successMsg');
+            el.textContent = msg;
+            el.style.display = 'block';
+            document.getElementById('errorMsg').style.display = 'none';
+            setTimeout(() => el.style.display = 'none', 8000);
+        }
+    </script>
+</body>
+</html>
+    `);
 });
 
 app.get('/manifest/:apiKey', async (req, res) => {
