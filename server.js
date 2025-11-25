@@ -6,13 +6,13 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const crypto = require('crypto');
 const express = require('express');
 const mongoose = require('mongoose');
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const stripe = process.env.STRIPE_SECRET_KEY ? require('stripe')(process.env.STRIPE_SECRET_KEY) : null;
 
 // Configurare
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const OPENSUBTITLES_API_KEY = process.env.OPENSUBTITLES_API_KEY;
 const OPENSUBTITLES_USER_AGENT = 'StremioMultiLangSubtitles v2.0';
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 const SUBSCRIPTION_PRICE = 1.00; // $1 pentru 3 luni
 
 // Conectare MongoDB
