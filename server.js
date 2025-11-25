@@ -1078,12 +1078,23 @@ app.get('/health', (req, res) => {
 
 // Pornire server
 const PORT = process.env.PORT || 7000;
+
+// Error handling pentru server
+process.on('unhandledRejection', (err) => {
+    console.error('❌ Unhandled Rejection:', err);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('❌ Uncaught Exception:', err);
+    process.exit(1);
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log('\n' + '='.repeat(70));
     console.log('🎬 STREMIO MULTI-LANGUAGE SUBTITLES - PRODUCTION');
     console.log('='.repeat(70));
-    console.log(`🌐 Server:              http://localhost:${PORT}`);
-    console.log(`📝 Dashboard:           http://localhost:${PORT}/`);
+    console.log(`🌐 Server:              http://0.0.0.0:${PORT}`);
+    console.log(`📝 Dashboard:           http://0.0.0.0:${PORT}/`);
     console.log(`💳 Subscription:        $${SUBSCRIPTION_PRICE} / 3 luni`);
     console.log(`🌍 Limbi suportate:     ${Object.keys(SUPPORTED_LANGUAGES).length}`);
     console.log('='.repeat(70));
@@ -1092,6 +1103,9 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`🔑 Stripe:              ${process.env.STRIPE_SECRET_KEY ? '✅' : '❌'}`);
     console.log(`💾 MongoDB:             ${mongoose.connection.readyState === 1 ? '✅ Connected' : '⏳ Connecting...'}`);
     console.log('='.repeat(70) + '\n');
+}).on('error', (err) => {
+    console.error('❌ Server error:', err);
+    process.exit(1);
 });
 
 // Graceful shutdown
