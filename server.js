@@ -379,13 +379,19 @@ async function verifyApiKey(req, res, next) {
 }
 
 // Manifest dinamic per user
-function createUserManifest(userId, preferredLang, baseUrl) {
+function createUserManifest(userId, preferredLang, baseUrl, apiKey) {
     return {
         id: `ro.subtitle.translator.${userId}`,
         version: '2.0.0',
         name: `Subtitrări ${SUPPORTED_LANGUAGES[preferredLang]} AI`,
         description: `Caută și traduce automat subtitrări în ${SUPPORTED_LANGUAGES[preferredLang]} folosind AI. Suportă toate limbile majore.`,
-        resources: ['subtitles'],
+        resources: [
+            {
+                name: 'subtitles',
+                types: ['movie', 'series'],
+                idPrefixes: ['tt']
+            }
+        ],
         types: ['movie', 'series'],
         catalogs: [],
         idPrefixes: ['tt'],
@@ -393,6 +399,11 @@ function createUserManifest(userId, preferredLang, baseUrl) {
         behaviorHints: {
             configurable: true,
             configurationRequired: false
+        },
+        // Specifică că resursa de subtitrări este la această adresă
+        addon: {
+            type: 'subtitles',
+            url: `${baseUrl}/manifest/${apiKey}/subtitles`
         }
     };
 }
@@ -1453,8 +1464,8 @@ app.get('/manifest/:apiKey', async (req, res) => {
     }
 });
 
-// Subtitles handler
-app.get('/:apiKey/subtitles/:type/:id.json', async (req, res) => {
+// Subtitles handler - Stremio accesează această rută pentru subtitrări
+app.get('/manifest/:apiKey/subtitles/:type/:id.json', async (req, res) => {
     try {
         const { apiKey, type, id } = req.params;
         const user = await User.findOne({ apiKey });
