@@ -393,10 +393,6 @@ function createUserManifest(userId, preferredLang, baseUrl) {
         behaviorHints: {
             configurable: true,
             configurationRequired: false
-        },
-        config: {
-            url: `${baseUrl}/configure`,
-            type: 'html'
         }
     };
 }
@@ -423,6 +419,7 @@ app.use(express.static('public'));
 // Pagina de configurare pentru Stremio Addon
 app.get('/configure', (req, res) => {
     const apiKey = req.query.apiKey || '';
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
     
     res.send(`
 <!DOCTYPE html>
@@ -650,9 +647,12 @@ app.get('/configure', (req, res) => {
         }
         
         // Auto-load dacă există API key în URL
-        if (document.getElementById('apiKey').value) {
-            loadConfig();
-        }
+        window.addEventListener('DOMContentLoaded', () => {
+            const apiKeyInput = document.getElementById('apiKey');
+            if (apiKeyInput && apiKeyInput.value) {
+                loadConfig();
+            }
+        });
     </script>
 </body>
 </html>
@@ -1165,6 +1165,24 @@ app.post('/api/register', async (req, res) => {
 });
 
 // Manifest personalizat per user
+// Pagina de configurare pentru un addon specific (Stremio accesează /manifest/:apiKey/configure)
+app.get('/manifest/:apiKey/configure', async (req, res) => {
+    const { apiKey } = req.params;
+    
+    // Verifică dacă user-ul există
+    try {
+        const user = await User.findOne({ apiKey });
+        if (!user) {
+            return res.status(404).send('Addon nu există');
+        }
+    } catch (error) {
+        console.error('Eroare verificare user:', error);
+    }
+    
+    // Redirect către pagina de configurare cu API key
+    res.redirect(`/configure?apiKey=${apiKey}`);
+});
+
 app.get('/manifest/:apiKey', async (req, res) => {
     try {
         const { apiKey } = req.params;
