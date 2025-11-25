@@ -767,7 +767,7 @@ app.post('/api/register', async (req, res) => {
             // User existent - returnează datele
             return res.json({
                 apiKey: user.apiKey,
-                manifestUrl: `${process.env.BASE_URL || 'http://localhost:7000'}/manifest/${user.apiKey}`,
+                manifestUrl: `${process.env.BASE_URL || `https://${req.headers.host || 'localhost:7000'}`}/manifest/${user.apiKey}`,
                 subscriptionStatus: user.subscriptionStatus,
                 subscriptionEndDate: user.subscriptionEndDate,
                 translationsUsed: user.translationsUsed,
