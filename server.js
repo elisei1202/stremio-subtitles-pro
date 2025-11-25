@@ -16,10 +16,14 @@ const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 const SUBSCRIPTION_PRICE = 1.00; // $1 pentru 3 luni
 
 // Conectare MongoDB
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/stremio-subtitles').catch(err => {
-    console.error('⚠️ MongoDB connection error:', err.message);
-    console.log('⏳ Continuând fără MongoDB (va funcționa doar cu MongoDB Atlas)');
-});
+if (process.env.MONGODB_URI) {
+    mongoose.connect(process.env.MONGODB_URI).catch(err => {
+        console.error('⚠️ MongoDB connection error:', err.message);
+        console.log('⏳ Continuând fără MongoDB - va funcționa dar nu vor fi salvate date');
+    });
+} else {
+    console.log('⚠️ MONGODB_URI nu este setat - aplicația va funcționa dar nu vor fi salvate date');
+}
 
 // Schema User
 const userSchema = new mongoose.Schema({
@@ -1078,15 +1082,25 @@ app.get('/health', (req, res) => {
 
 // Pornire server
 const PORT = process.env.PORT || 7000;
+console.log('🚀 Starting server on port:', PORT);
+console.log('🔧 Environment variables:', {
+    GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
+    OPENSUBTITLES_API_KEY: !!process.env.OPENSUBTITLES_API_KEY,
+    STRIPE_SECRET_KEY: !!process.env.STRIPE_SECRET_KEY,
+    MONGODB_URI: !!process.env.MONGODB_URI,
+    PORT: process.env.PORT
+});
 
 // Error handling pentru server
 process.on('unhandledRejection', (err) => {
     console.error('❌ Unhandled Rejection:', err);
+    console.error('Stack:', err.stack);
 });
 
 process.on('uncaughtException', (err) => {
     console.error('❌ Uncaught Exception:', err);
-    process.exit(1);
+    console.error('Stack:', err.stack);
+    // Nu exit imediat, lasă aplicația să încerce să răspundă
 });
 
 app.listen(PORT, '0.0.0.0', () => {
