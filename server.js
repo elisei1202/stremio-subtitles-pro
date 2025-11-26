@@ -1455,8 +1455,19 @@ app.get('/manifest/:apiKey', async (req, res) => {
 
 // Subtitles handler - Stremio accesează această rută pentru subtitrări
 // IMPORTANT: Stremio construiește URL-ul relativ la manifest
-// Dacă manifest-ul este la /manifest/:apiKey, subtitrările trebuie la /manifest/:apiKey/subtitles/:type/:id.json
+// Încercăm ambele formate pentru compatibilitate:
+// 1. /manifest/:apiKey/subtitles/:type/:id.json (relativ la manifest)
+// 2. /:apiKey/subtitles/:type/:id.json (ruta alternativă)
 app.get('/manifest/:apiKey/subtitles/:type/:id.json', async (req, res) => {
+    handleSubtitlesRequest(req, res);
+});
+
+app.get('/:apiKey/subtitles/:type/:id.json', async (req, res) => {
+    handleSubtitlesRequest(req, res);
+});
+
+// Handler comun pentru subtitrări
+async function handleSubtitlesRequest(req, res) {
     try {
         const { apiKey, type, id } = req.params;
         
