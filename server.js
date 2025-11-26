@@ -1446,7 +1446,7 @@ app.get('/manifest/:apiKey', async (req, res) => {
         }
 
         const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
-        const manifest = createUserManifest(user._id, user.preferredLanguage, baseUrl);
+        const manifest = createUserManifest(user._id, user.preferredLanguage, baseUrl, apiKey);
         res.json(manifest);
     } catch (error) {
         console.error('Eroare manifest:', error);
