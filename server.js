@@ -206,7 +206,10 @@ async function searchSubtitles(imdbId, season, episode, token) {
         // METODA 2: YIFY Subtitles (GRATUIT - fără API key)
         console.log(`📡 Încerc YIFY Subtitles (GRATUIT)...`);
         try {
-            const yifyUrl = `https://yifysubtitles.org/movie-imdb/${imdbId}`;
+            // YIFY necesită IMDb ID cu "tt" - folosim imdbId original (nu imdbIdClean)
+            const yifyImdbId = imdbId.startsWith('tt') ? imdbId : `tt${imdbId}`;
+            const yifyUrl = `https://yifysubtitles.org/movie-imdb/${yifyImdbId}`;
+            console.log(`🔗 YIFY URL: ${yifyUrl}`);
             const yifyResponse = await axios.get(yifyUrl, {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -1793,10 +1796,13 @@ app.get('/download-subtitle/:apiKey/:fileId', async (req, res) => {
 
         console.log(`📥 Descărcare subtitrare nativă: fileId=${fileId}`);
 
-        // Obține token OpenSubtitles
-        const token = await getOpenSubtitlesToken();
-        if (!token) {
-            return res.status(500).send('Eroare la autentificare OpenSubtitles');
+        // Obține token OpenSubtitles (doar dacă există API key)
+        let token = null;
+        if (OPENSUBTITLES_API_KEY) {
+            token = await getOpenSubtitlesToken();
+            if (!token) {
+                console.log(`⚠️ Nu s-a putut obține token - va încerca fără token`);
+            }
         }
 
         // Descarcă subtitrare folosind funcția existentă
