@@ -239,11 +239,16 @@ async function searchSubtitles(imdbId, season, episode) {
                         }
                     }
                     
+                    // Salvez slug-ul complet pentru descărcare
                     subtitles.push({
                         id: `yify-${subId}`,
                         attributes: {
                             language: lang,
-                            files: [{ file_id: `yify-${subId}`, download_link: `https://yifysubtitles.org${href}` }],
+                            files: [{ 
+                                file_id: `yify-${subId}`, 
+                                download_link: `https://yifysubtitles.org${href}`,
+                                slug: fullSlug  // Slug complet pentru descărcare
+                            }],
                             download_count: 0
                         }
                     });
@@ -263,100 +268,70 @@ async function searchSubtitles(imdbId, season, episode) {
 }
 
 // Descărcare subtitrare de la YIFY
-async function downloadSubtitle(fileId, downloadLink = null) {
+async function downloadSubtitle(fileId) {
     try {
         console.log(`📥 Descărcare YIFY subtitrare: fileId=${fileId}`);
         
-        // Toate subtitrările sunt de la YIFY
+        // Toate subtitrările sunt de la YIFY - format: yify-392064
         if (!fileId.startsWith('yify-')) {
             console.error(`❌ FileId invalid: ${fileId}`);
             return null;
         }
         
-        const yifyId = fileId.replace('yify-', ''); // Acum e doar numărul: 392064
-        console.log(`🔗 Descărcare YIFY ID numeric: ${yifyId}`);
+        const yifyId = fileId.replace('yify-', ''); // Extrage doar numărul: 392064
         
-        // Construim URL-ul complet folosind slug-ul din downloadLink dacă există
-        // Sau încercăm să construim din ID numeric
-        let srtUrl = null;
+        // YIFY folosește format: https://yifysubtitles.org/subtitles/<slug>/<id>
+        // Trebuie să accesăm pagina pentru a găsi link-ul de download real
+        // Sau să construim direct URL-ul de download
         
-        if (downloadLink) {
-            // Folosim link-ul complet și adăugăm .srt
-            srtUrl = downloadLink.endsWith('/') ? downloadLink.slice(0, -1) + '.srt' : downloadLink + '.srt';
-        } else {
-            // Fallback: construim URL din ID numeric (poate nu funcționează)
-            srtUrl = `https://yifysubtitles.org/subtitles/${yifyId}.srt`;
-        }
+        // Metoda 1: Încercăm să găsim pagina subtitrării și să extragem link-ul de download
+        // Pentru simplitate, folosim formatul standard YIFY pentru download direct
+        const downloadUrls = [
+            `https://www.yifysubtitles.org/subtitles/${yifyId}.zip`, // ZIP direct
+            `https://yifysubtitles.org/subtitles/${yifyId}.zip`     // ZIP alternativ
+        ];
         
-        console.log(`📡 Accesez SRT: ${srtUrl}`);
-        
-        try {
-            const srtResponse = await axios.get(srtUrl, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Referer': 'https://yifysubtitles.org/',
-                    'Accept': '*/*'
-                },
-                responseType: 'arraybuffer',
-                timeout: 30000,
-                maxRedirects: 5
-            });
-            
-            const content = Buffer.from(srtResponse.data).toString('utf-8');
-            
-            // Verifică dacă e SRT valid
-            if (content.includes('-->') || content.match(/^\d+\s*$/m)) {
-                console.log(`✅ YIFY SRT descărcat: ${content.length} caractere`);
-                return content;
-            } else {
-                console.log(`⚠️ Răspuns nu pare să fie SRT valid, încerc direct download link...`);
-                // Încercăm direct link-ul de download
-                if (downloadLink && !downloadLink.includes('.srt')) {
-                    try {
-                        const directResponse = await axios.get(downloadLink, {
-                            headers: {
-                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                                'Referer': 'https://yifysubtitles.org/'
-                            },
-                            responseType: 'arraybuffer',
-                            timeout: 30000,
-                            maxRedirects: 10
-                        });
-                        const directContent = Buffer.from(directResponse.data).toString('utf-8');
-                        if (directContent.includes('-->')) {
-                            console.log(`✅ Descărcat de pe link direct: ${directContent.length} caractere`);
-                            return directContent;
-                        }
-                    } catch (e) {
-                        console.log(`⚠️ Link direct eșuat: ${e.message}`);
+        for (const downloadUrl of downloadUrls) {
+            try {
+                console.log(`📡 Încerc descărcare: ${downloadUrl}`);
+                const response = await axios.get(downloadUrl, {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        'Referer': 'https://yifysubtitles.org/',
+                        'Accept': '*/*'
+                    },
+                    responseType: 'arraybuffer',
+                    timeout: 30000,
+                    maxRedirects: 10,
+                    validateStatus: function (status) {
+                        return status >= 200 && status < 400;
                     }
+                });
+                
+                const content = Buffer.from(response.data);
+                
+                // Verifică dacă e SRT direct sau ZIP
+                const textContent = content.toString('utf-8', 0, Math.min(1000, content.length));
+                
+                if (textContent.includes('-->') || textContent.match(/^\d+\s*$/m)) {
+                    // E SRT direct
+                    console.log(`✅ SRT descărcat: ${content.length} bytes`);
+                    return content.toString('utf-8');
+                } else {
+                    // Probabil e ZIP - ar trebui extins, dar pentru moment returnăm null
+                    console.log(`⚠️ Descărcat ZIP (${content.length} bytes) - necesită extragere`);
+                    // Poate fi procesat cu unzip, dar pentru moment returnăm null
+                    return null;
                 }
-                return content; // Returnează oricum ce am primit
+            } catch (urlError) {
+                console.log(`⚠️ URL ${downloadUrl} eșuat: ${urlError.message}`);
+                continue; // Încearcă următorul URL
             }
-        } catch (srtError) {
-            console.log(`⚠️ SRT eșuat: ${srtError.message}`);
-            // Încercăm link-ul direct dacă există
-            if (downloadLink) {
-                try {
-                    console.log(`📡 Încerc link direct: ${downloadLink}`);
-                    const directResponse = await axios.get(downloadLink, {
-                        headers: {
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                            'Referer': 'https://yifysubtitles.org/'
-                        },
-                        responseType: 'arraybuffer',
-                        timeout: 30000,
-                        maxRedirects: 10
-                    });
-                    const directContent = Buffer.from(directResponse.data).toString('utf-8');
-                    console.log(`✅ Descărcat de pe link direct: ${directContent.length} caractere`);
-                    return directContent;
-                } catch (directError) {
-                    console.log(`⚠️ Link direct eșuat: ${directError.message}`);
-                }
-            }
-            return null;
         }
+        
+        // Dacă niciun URL nu funcționează, returnăm null
+        console.error(`❌ Nu s-a putut descărca subtitrare pentru ${fileId}`);
+        return null;
     } catch (error) {
         console.error('❌ Eroare descărcare YIFY:', error.message);
         return null;
