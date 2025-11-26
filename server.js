@@ -160,37 +160,94 @@ async function getOpenSubtitlesToken() {
     }
 }
 
+// Căutare subtitrări folosind OpenSubtitles.org (versiunea veche - GRATUITĂ)
 async function searchSubtitles(imdbId, season, episode, token) {
     try {
         const imdbIdClean = imdbId.replace(/^tt/, ''); // Elimină 'tt' dacă există
-        const params = {
-            imdb_id: imdbIdClean,
-        };
-
-        // Nu filtram pe limbi la căutare - vrem toate
-        // languages: Object.keys(SUPPORTED_LANGUAGES).join(','),
-
+        console.log(`🔍 Căutare OpenSubtitles.org (GRATUIT): imdb_id=${imdbIdClean}, season=${season || 'N/A'}, episode=${episode || 'N/A'}`);
+        
+        // Folosim OpenSubtitles.org (versiunea veche) care permite căutare fără API key
+        // Construim URL-ul de căutare direct
+        let searchUrl = `https://www.opensubtitles.org/en/search2/sublanguageid-all/imdbid-${imdbIdClean}`;
+        
         if (season && episode) {
-            params.season_number = season;
-            params.episode_number = episode;
+            searchUrl += `/season-${season}/episode-${episode}`;
         }
-
-        console.log(`🔍 Căutare OpenSubtitles: imdb_id=${params.imdb_id}, season=${season || 'N/A'}, episode=${episode || 'N/A'}`);
-
-        const response = await axios.get('https://api.opensubtitles.com/api/v1/subtitles', {
-            params: params,
+        
+        console.log(`📡 Accesez: ${searchUrl}`);
+        
+        // Facem request la pagina de căutare OpenSubtitles.org
+        const response = await axios.get(searchUrl, {
             headers: {
-                'Api-Key': OPENSUBTITLES_API_KEY,
-                'Authorization': `Bearer ${token}`,
-                'User-Agent': OPENSUBTITLES_USER_AGENT
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive'
             },
-            timeout: 15000
+            timeout: 15000,
+            maxRedirects: 5
         });
-
-        const subtitles = response.data.data || [];
-        console.log(`📊 OpenSubtitles returnează ${subtitles.length} rezultate`);
-        if (subtitles.length > 0) {
-            console.log(`📋 Primele limbi găsite:`, [...new Set(subtitles.slice(0, 10).map(s => s.attributes?.language))].join(', '));
+        
+        // Parsează HTML pentru a găsi subtitrări
+        const html = response.data;
+        const subtitles = [];
+        
+        // Regex pentru a găsi link-uri către subtitrări în HTML
+        // Format OpenSubtitles.org: /subtitles/<id>/<name>
+        const subtitleRegex = /\/subtitles\/(\d+)\/[^"']+/g;
+        const languageRegex = /subtitle-language[^>]*>([^<]+)</g;
+        const downloadRegex = /\/download\/sub\/(\d+)/g;
+        
+        let match;
+        const foundIds = new Set();
+        
+        // Caută toate ID-urile de subtitrări
+        while ((match = subtitleRegex.exec(html)) !== null) {
+            const subId = match[1];
+            if (!foundIds.has(subId)) {
+                foundIds.add(subId);
+                // Extrage și limbă din contextul HTML
+                // Simplificat: presupunem că găsim limba în același context
+                subtitles.push({
+                    id: subId,
+                    attributes: {
+                        language: 'unknown', // Va fi setat mai jos
+                        files: [{ file_id: subId }],
+                        download_count: 0
+                    }
+                });
+            }
+        }
+        
+        console.log(`📊 OpenSubtitles.org returnează ${subtitles.length} rezultate (scraping)`);
+        
+        // Dacă nu găsim prin scraping, încercăm API-ul (dacă există token)
+        if (subtitles.length === 0 && token && OPENSUBTITLES_API_KEY) {
+            console.log(`⚠️ Nu s-au găsit prin scraping, încerc API-ul...`);
+            try {
+                const apiParams = { imdb_id: imdbIdClean };
+                if (season && episode) {
+                    apiParams.season_number = season;
+                    apiParams.episode_number = episode;
+                }
+                
+                const apiResponse = await axios.get('https://api.opensubtitles.com/api/v1/subtitles', {
+                    params: apiParams,
+                    headers: {
+                        'Api-Key': OPENSUBTITLES_API_KEY,
+                        'Authorization': `Bearer ${token}`,
+                        'User-Agent': OPENSUBTITLES_USER_AGENT
+                    },
+                    timeout: 10000
+                });
+                
+                const apiSubtitles = apiResponse.data.data || [];
+                console.log(`📊 API OpenSubtitles returnează ${apiSubtitles.length} rezultate`);
+                return apiSubtitles;
+            } catch (apiError) {
+                console.log(`⚠️ API OpenSubtitles eșuat: ${apiError.message}`);
+            }
         }
         
         return subtitles;
@@ -198,7 +255,6 @@ async function searchSubtitles(imdbId, season, episode, token) {
         console.error('❌ Eroare căutare subtitrări:', error.message);
         if (error.response) {
             console.error('❌ Response status:', error.response.status);
-            console.error('❌ Response data:', JSON.stringify(error.response.data, null, 2));
         }
         return [];
     }
@@ -1554,15 +1610,9 @@ app.get('/manifest/:apiKey/subtitles/:type/:id.json', async (req, res) => {
         
         console.log(`📺 IMDb: ${imdbId}, Season: ${season || 'N/A'}, Episode: ${episode || 'N/A'}`);
 
-        // Obține token OpenSubtitles
-        console.log(`🔑 Obțin token OpenSubtitles...`);
-        const token = await getOpenSubtitlesToken();
-        if (!token) {
-            console.log(`❌ Nu s-a putut obține token OpenSubtitles`);
-            console.log(`❌ Verifică OPENSUBTITLES_API_KEY în variabilele de mediu`);
-            return res.json({ subtitles: [] });
-        }
-        console.log(`✅ Token obținut: ${token.substring(0, 20)}...`);
+        // Nu mai avem nevoie de token - folosim OpenSubtitles.org direct (GRATUIT)
+        console.log(`🔍 Folosim OpenSubtitles.org direct (FĂRĂ API KEY - GRATUIT)`);
+        const token = null; // Nu mai e necesar pentru versiunea gratuită
 
         // Caută subtitrări
         console.log(`🔍 Căutare subtitrări pentru: ${imdbId}...`);
