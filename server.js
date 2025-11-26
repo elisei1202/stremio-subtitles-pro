@@ -125,10 +125,6 @@ const SUPPORTED_LANGUAGES = {
     'fi': 'Suomi'
 };
 
-// Cache în memorie pentru tokens
-let osToken = null;
-let tokenExpiry = 0;
-
 // Funcții helper
 function generateApiKey() {
     return 'sk_' + crypto.randomBytes(32).toString('hex');
@@ -136,29 +132,6 @@ function generateApiKey() {
 
 function getCacheKey(fileId, sourceLang, targetLang) {
     return crypto.createHash('md5').update(`${fileId}-${sourceLang}-${targetLang}`).digest('hex');
-}
-
-async function getOpenSubtitlesToken() {
-    if (osToken && Date.now() < tokenExpiry) {
-        return osToken;
-    }
-
-    try {
-        const response = await axios.post('https://api.opensubtitles.com/api/v1/login', {}, {
-            headers: {
-                'Api-Key': OPENSUBTITLES_API_KEY,
-                'User-Agent': OPENSUBTITLES_USER_AGENT,
-                'Content-Type': 'application/json'
-            }
-        });
-        osToken = response.data.token;
-        tokenExpiry = Date.now() + (23 * 60 * 60 * 1000);
-        console.log('✅ Token OpenSubtitles obținut');
-        return osToken;
-    } catch (error) {
-        console.error('❌ Eroare autentificare OpenSubtitles:', error.message);
-        return null;
-    }
 }
 
 // Căutare subtitrări folosind DOAR YIFY (GRATUIT)
@@ -1957,7 +1930,6 @@ console.log('🚀 Starting server...');
 console.log('📋 PORT:', PORT);
 console.log('🔧 Env vars:', {
     hasGemini: !!process.env.GEMINI_API_KEY,
-    hasOpenSubtitles: !!process.env.OPENSUBTITLES_API_KEY,
     hasStripe: !!process.env.STRIPE_SECRET_KEY,
     hasMongoDB: !!process.env.MONGODB_URI
 });
@@ -1973,7 +1945,6 @@ try {
     console.log(`🌍 Limbi suportate:     ${Object.keys(SUPPORTED_LANGUAGES).length}`);
     console.log('='.repeat(70));
     console.log(`🔑 Gemini:              ${GEMINI_API_KEY ? '✅' : '❌'}`);
-    console.log(`🔑 OpenSubtitles:       ${OPENSUBTITLES_API_KEY ? '✅' : '❌'}`);
     console.log(`🔑 Stripe:              ${process.env.STRIPE_SECRET_KEY ? '✅' : '❌'}`);
     console.log(`💾 MongoDB:             ${mongoose.connection.readyState === 1 ? '✅ Connected' : '⏳ Connecting...'}`);
     console.log('='.repeat(70) + '\n');
