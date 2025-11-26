@@ -1755,10 +1755,13 @@ app.get('/manifest/:apiKey/subtitles/:type/:id.json', async (req, res) => {
         console.log(`=====================================\n`);
         
         // IMPORTANT: Stremio așteaptă exact formatul { subtitles: [...] }
-        res.json({ subtitles: results });
+        // Trebuie să returnăm întotdeauna un array valid, chiar dacă e gol
+        const response = { subtitles: results || [] };
+        res.json(response);
     } catch (error) {
         console.error(`❌ EROARE SUBTITRĂRI: ${error.message}`);
         if (error.stack) console.error(error.stack);
+        // IMPORTANT: Întoarcem întotdeauna un răspuns valid pentru ca filmele să pornească
         res.json({ subtitles: [] });
     }
 });
