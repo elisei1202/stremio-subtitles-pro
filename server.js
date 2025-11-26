@@ -161,114 +161,78 @@ async function getOpenSubtitlesToken() {
     }
 }
 
-// Căutare subtitrări - PRIORITATE: OpenSubtitles.com API (GRATUIT 20/zi), FALLBACK: YIFY
+// Căutare subtitrări folosind DOAR YIFY (GRATUIT)
 async function searchSubtitles(imdbId, season, episode, token) {
     try {
-        const imdbIdClean = imdbId.replace(/^tt/, ''); // Elimină 'tt' dacă există
-        console.log(`🔍 Căutare subtitrări: imdb_id=${imdbIdClean}, season=${season || 'N/A'}, episode=${episode || 'N/A'}`);
+        console.log(`🔍 Căutare YIFY Subtitles: imdb_id=${imdbId}, season=${season || 'N/A'}, episode=${episode || 'N/A'}`);
         
+        // YIFY necesită IMDb ID cu "tt"
+        const yifyImdbId = imdbId.startsWith('tt') ? imdbId : `tt${imdbId}`;
+        const yifyUrl = `https://yifysubtitles.org/movie-imdb/${yifyImdbId}`;
+        console.log(`📡 Accesez: ${yifyUrl}`);
+        
+        const yifyResponse = await axios.get(yifyUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Referer': 'https://yifysubtitles.org/'
+            },
+            timeout: 20000,
+            maxRedirects: 5
+        });
+        
+        const $yify = cheerio.load(yifyResponse.data);
         const subtitles = [];
+        const foundIds = new Set();
         
-        // METODA 1: OpenSubtitles.com API (dacă există token și API key)
-        if (token && OPENSUBTITLES_API_KEY) {
-            console.log(`📡 Încerc OpenSubtitles.com API (GRATUIT)...`);
-            try {
-                const apiParams = { imdb_id: imdbIdClean };
-                if (season && episode) {
-                    apiParams.season_number = season;
-                    apiParams.episode_number = episode;
-                }
-                
-                const apiResponse = await axios.get('https://api.opensubtitles.com/api/v1/subtitles', {
-                    params: apiParams,
-                    headers: {
-                        'Api-Key': OPENSUBTITLES_API_KEY,
-                        'Authorization': `Bearer ${token}`,
-                        'User-Agent': OPENSUBTITLES_USER_AGENT
-                    },
-                    timeout: 15000
-                });
-                
-                const apiSubtitles = apiResponse.data.data || [];
-                console.log(`✅ OpenSubtitles.com API: ${apiSubtitles.length} rezultate`);
-                
-                if (apiSubtitles.length > 0) {
-                    return apiSubtitles;
-                }
-            } catch (apiError) {
-                console.log(`⚠️ OpenSubtitles.com API eșuat: ${apiError.message}`);
-                if (apiError.response) {
-                    console.log(`⚠️ Status: ${apiError.response.status}, Data: ${JSON.stringify(apiError.response.data).substring(0, 200)}`);
+        // YIFY folosește link-uri către subtitrări
+        $yify('a[href*="/subtitles/"]').each((i, elem) => {
+            const href = $yify(elem).attr('href');
+            if (href && href.includes('/subtitles/')) {
+                const match = href.match(/\/subtitles\/([^\/]+)/);
+                if (match) {
+                    const subId = match[1];
+                    if (foundIds.has(subId)) return; // Skip duplicates
+                    foundIds.add(subId);
+                    
+                    const langText = $yify(elem).text().trim().toLowerCase();
+                    
+                    // Mapare limbi
+                    const langMap = {
+                        'romanian': 'ro', 'română': 'ro', 'ro': 'ro',
+                        'english': 'en', 'engleză': 'en', 'en': 'en',
+                        'spanish': 'es', 'spaniolă': 'es', 'es': 'es',
+                        'french': 'fr', 'franceză': 'fr', 'fr': 'fr',
+                        'german': 'de', 'germană': 'de', 'de': 'de',
+                        'italian': 'it', 'italiană': 'it', 'it': 'it',
+                        'portuguese': 'pt', 'portugheză': 'pt', 'pt': 'pt',
+                        'russian': 'ru', 'rusă': 'ru', 'ru': 'ru'
+                    };
+                    
+                    let lang = 'unknown';
+                    for (const [key, code] of Object.entries(langMap)) {
+                        if (langText.includes(key)) {
+                            lang = code;
+                            break;
+                        }
+                    }
+                    
+                    subtitles.push({
+                        id: `yify-${subId}`,
+                        attributes: {
+                            language: lang,
+                            files: [{ file_id: `yify-${subId}`, download_link: href }],
+                            download_count: 0
+                        }
+                    });
                 }
             }
-        }
+        });
         
-        // METODA 2: YIFY Subtitles (GRATUIT - fără API key)
-        console.log(`📡 Încerc YIFY Subtitles (GRATUIT)...`);
-        try {
-            // YIFY necesită IMDb ID cu "tt" - folosim imdbId original (nu imdbIdClean)
-            const yifyImdbId = imdbId.startsWith('tt') ? imdbId : `tt${imdbId}`;
-            const yifyUrl = `https://yifysubtitles.org/movie-imdb/${yifyImdbId}`;
-            console.log(`🔗 YIFY URL: ${yifyUrl}`);
-            const yifyResponse = await axios.get(yifyUrl, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Referer': 'https://yifysubtitles.org/'
-                },
-                timeout: 20000,
-                maxRedirects: 5
-            });
-            
-            const $yify = cheerio.load(yifyResponse.data);
-            
-            // YIFY folosește link-uri către subtitrări
-            $yify('a[href*="/subtitles/"]').each((i, elem) => {
-                const href = $yify(elem).attr('href');
-                if (href && href.includes('/subtitles/')) {
-                    const match = href.match(/\/subtitles\/([^\/]+)/);
-                    if (match) {
-                        const subId = match[1];
-                        const langText = $yify(elem).text().trim().toLowerCase();
-                        
-                        // Mapare limbi
-                        const langMap = {
-                            'romanian': 'ro', 'română': 'ro', 'ro': 'ro',
-                            'english': 'en', 'engleză': 'en', 'en': 'en',
-                            'spanish': 'es', 'spaniolă': 'es', 'es': 'es',
-                            'french': 'fr', 'franceză': 'fr', 'fr': 'fr',
-                            'german': 'de', 'germană': 'de', 'de': 'de'
-                        };
-                        
-                        let lang = 'unknown';
-                        for (const [key, code] of Object.entries(langMap)) {
-                            if (langText.includes(key)) {
-                                lang = code;
-                                break;
-                            }
-                        }
-                        
-                        subtitles.push({
-                            id: `yify-${subId}`,
-                            attributes: {
-                                language: lang,
-                                files: [{ file_id: `yify-${subId}`, download_link: href }],
-                                download_count: 0
-                            }
-                        });
-                    }
-                }
-            });
-            
-            console.log(`✅ YIFY Subtitles: ${subtitles.length} rezultate`);
-        } catch (yifyError) {
-            console.log(`⚠️ YIFY eșuat: ${yifyError.message}`);
-        }
-        
-        console.log(`📊 TOTAL subtitrări găsite: ${subtitles.length}`);
+        console.log(`✅ YIFY Subtitles găsite: ${subtitles.length} rezultate`);
         return subtitles;
     } catch (error) {
-        console.error('❌ Eroare căutare subtitrări:', error.message);
+        console.error('❌ Eroare căutare YIFY:', error.message);
         if (error.response) {
             console.error('❌ Response status:', error.response.status);
         }
@@ -276,88 +240,71 @@ async function searchSubtitles(imdbId, season, episode, token) {
     }
 }
 
-// Descărcare subtitrare (suportă multiple surse)
+// Descărcare subtitrare de la YIFY
 async function downloadSubtitle(fileId, token) {
     try {
-        console.log(`📥 Descărcare subtitrare: fileId=${fileId}`);
+        console.log(`📥 Descărcare YIFY subtitrare: fileId=${fileId}`);
         
-        // Verifică dacă e de la YIFY
-        if (fileId.startsWith('yify-')) {
-            const yifyId = fileId.replace('yify-', '');
-            console.log(`🔗 Descărcare de la YIFY: ${yifyId}`);
+        // Toate subtitrările sunt de la YIFY
+        if (!fileId.startsWith('yify-')) {
+            console.error(`❌ FileId invalid: ${fileId}`);
+            return null;
+        }
+        
+        const yifyId = fileId.replace('yify-', '');
+        console.log(`🔗 Descărcare YIFY ID: ${yifyId}`);
+        
+        // Încearcă să descarce direct SRT
+        const srtUrl = `https://yifysubtitles.org/subtitles/${yifyId}.srt`;
+        console.log(`📡 Accesez: ${srtUrl}`);
+        
+        try {
+            const srtResponse = await axios.get(srtUrl, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Referer': 'https://yifysubtitles.org/',
+                    'Accept': '*/*'
+                },
+                responseType: 'arraybuffer',
+                timeout: 30000,
+                maxRedirects: 5
+            });
             
-            // YIFY permite descărcare directă
-            const yifyUrl = `https://yifysubtitles.org/subtitles/${yifyId}.zip`;
+            const content = Buffer.from(srtResponse.data).toString('utf-8');
             
+            // Verifică dacă e SRT valid
+            if (content.includes('-->') || content.match(/^\d+\s*$/m)) {
+                console.log(`✅ YIFY SRT descărcat: ${content.length} caractere`);
+                return content;
+            } else {
+                console.log(`⚠️ Răspuns nu pare să fie SRT valid`);
+                // Poate e HTML sau altceva, dar încercăm totuși
+                return content;
+            }
+        } catch (srtError) {
+            console.log(`⚠️ SRT direct eșuat: ${srtError.message}, încerc ZIP...`);
+            
+            // Fallback: ZIP
+            const zipUrl = `https://yifysubtitles.org/subtitles/${yifyId}.zip`;
             try {
-                const response = await axios.get(yifyUrl, {
+                const zipResponse = await axios.get(zipUrl, {
                     headers: {
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                         'Referer': 'https://yifysubtitles.org/'
                     },
                     responseType: 'arraybuffer',
-                    timeout: 30000,
-                    maxRedirects: 5
+                    timeout: 30000
                 });
-                
-                // YIFY returnează ZIP - trebuie să extragem SRT
-                // Pentru simplitate, încercăm să descărcăm direct SRT
-                const srtUrl = yifyUrl.replace('.zip', '.srt');
-                try {
-                    const srtResponse = await axios.get(srtUrl, {
-                        headers: {
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                            'Referer': 'https://yifysubtitles.org/'
-                        },
-                        responseType: 'arraybuffer',
-                        timeout: 30000
-                    });
-                    const content = Buffer.from(srtResponse.data).toString('utf-8');
-                    console.log(`✅ YIFY subtitrare descărcată: ${content.length} caractere`);
-                    return content;
-                } catch (srtError) {
-                    console.log(`⚠️ SRT direct eșuat, ZIP disponibil (${response.data.length} bytes)`);
-                    // Returnează indiciu că e ZIP (ar trebui procesat)
-                    return null;
-                }
-            } catch (error) {
-                console.error(`❌ YIFY download eșuat: ${error.message}`);
+                console.log(`⚠️ ZIP descărcat (${zipResponse.data.length} bytes) - ar trebui extins`);
+                // Returnează null pentru ZIP - ar trebui procesat cu unzip
+                return null;
+            } catch (zipError) {
+                console.error(`❌ ZIP download eșuat: ${zipError.message}`);
                 return null;
             }
         }
-        
-        // Fallback: OpenSubtitles API (dacă există token)
-        if (token && OPENSUBTITLES_API_KEY) {
-            console.log(`⚠️ Încerc OpenSubtitles API ca fallback...`);
-            try {
-                const response = await axios.post('https://api.opensubtitles.com/api/v1/download', {
-                    file_id: fileId
-                }, {
-                    headers: {
-                        'Api-Key': OPENSUBTITLES_API_KEY,
-                        'Authorization': `Bearer ${token}`,
-                        'User-Agent': OPENSUBTITLES_USER_AGENT,
-                        'Content-Type': 'application/json'
-                    },
-                    timeout: 15000
-                });
-
-                const downloadUrl = response.data?.link || response.data?.data?.link;
-                if (downloadUrl) {
-                    const subtitleResponse = await axios.get(downloadUrl, {
-                        responseType: 'arraybuffer',
-                        timeout: 30000
-                    });
-                    return Buffer.from(subtitleResponse.data).toString('utf-8');
-                }
-            } catch (apiError) {
-                console.error(`❌ API fallback eșuat: ${apiError.message}`);
-            }
-        }
-        
-        return null;
     } catch (error) {
-        console.error('❌ Eroare descărcare subtitrare:', error.message);
+        console.error('❌ Eroare descărcare YIFY:', error.message);
         return null;
     }
 }
@@ -1794,19 +1741,10 @@ app.get('/download-subtitle/:apiKey/:fileId', async (req, res) => {
             return res.status(401).send('API Key invalid');
         }
 
-        console.log(`📥 Descărcare subtitrare nativă: fileId=${fileId}`);
+        console.log(`📥 Descărcare subtitrare YIFY: fileId=${fileId}`);
 
-        // Obține token OpenSubtitles (doar dacă există API key)
-        let token = null;
-        if (OPENSUBTITLES_API_KEY) {
-            token = await getOpenSubtitlesToken();
-            if (!token) {
-                console.log(`⚠️ Nu s-a putut obține token - va încerca fără token`);
-            }
-        }
-
-        // Descarcă subtitrare folosind funcția existentă
-        const subtitleContent = await downloadSubtitle(fileId, token);
+        // Descarcă subtitrare YIFY
+        const subtitleContent = await downloadSubtitle(fileId, null);
         
         if (!subtitleContent) {
             return res.status(404).send('Subtitrare negăsită');
