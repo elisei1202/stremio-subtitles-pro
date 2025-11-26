@@ -161,91 +161,17 @@ async function getOpenSubtitlesToken() {
     }
 }
 
-// Căutare subtitrări folosind OpenSubtitles.org (versiunea veche - GRATUITĂ)
+// Căutare subtitrări - PRIORITATE: OpenSubtitles.com API (GRATUIT 20/zi), FALLBACK: YIFY
 async function searchSubtitles(imdbId, season, episode, token) {
     try {
         const imdbIdClean = imdbId.replace(/^tt/, ''); // Elimină 'tt' dacă există
-        console.log(`🔍 Căutare OpenSubtitles.org (GRATUIT): imdb_id=${imdbIdClean}, season=${season || 'N/A'}, episode=${episode || 'N/A'}`);
+        console.log(`🔍 Căutare subtitrări: imdb_id=${imdbIdClean}, season=${season || 'N/A'}, episode=${episode || 'N/A'}`);
         
-        // Folosim OpenSubtitles.org (versiunea veche) care permite căutare fără API key
-        // Construim URL-ul de căutare direct
-        let searchUrl = `https://www.opensubtitles.org/en/search2/sublanguageid-all/imdbid-${imdbIdClean}`;
-        
-        if (season && episode) {
-            searchUrl += `/season-${season}/episode-${episode}`;
-        }
-        
-        console.log(`📡 Accesez: ${searchUrl}`);
-        
-        // Facem request la pagina de căutare OpenSubtitles.org
-        const response = await axios.get(searchUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Accept-Encoding': 'gzip, deflate',
-                'Connection': 'keep-alive'
-            },
-            timeout: 15000,
-            maxRedirects: 5
-        });
-        
-        // Parsează HTML cu Cheerio
-        const $ = cheerio.load(response.data);
         const subtitles = [];
-        const foundIds = new Set();
         
-        // OpenSubtitles.org folosește tabel cu subtitrări
-        // Caută link-uri către subtitrări în HTML
-        $('a[href*="/subtitles/"]').each((i, elem) => {
-            const href = $(elem).attr('href');
-            if (href) {
-                // Format: /subtitles/<id>/<name>
-                const match = href.match(/\/subtitles\/(\d+)/);
-                if (match) {
-                    const subId = match[1];
-                    if (!foundIds.has(subId)) {
-                        foundIds.add(subId);
-                        
-                        // Încearcă să găsească limba
-                        let lang = 'unknown';
-                        const langText = $(elem).closest('tr').find('td').eq(3).text().trim();
-                        if (langText) {
-                            // Mapare coduri limbă comune
-                            const langMap = {
-                                'romanian': 'ro', 'română': 'ro', 'ro': 'ro',
-                                'english': 'en', 'engleză': 'en', 'en': 'en',
-                                'spanish': 'es', 'spaniolă': 'es', 'es': 'es',
-                                'french': 'fr', 'franceză': 'fr', 'fr': 'fr',
-                                'german': 'de', 'germană': 'de', 'de': 'de'
-                            };
-                            const langLower = langText.toLowerCase();
-                            for (const [key, code] of Object.entries(langMap)) {
-                                if (langLower.includes(key)) {
-                                    lang = code;
-                                    break;
-                                }
-                            }
-                        }
-                        
-                        subtitles.push({
-                            id: subId,
-                            attributes: {
-                                language: lang,
-                                files: [{ file_id: subId }],
-                                download_count: 0
-                            }
-                        });
-                    }
-                }
-            }
-        });
-        
-        console.log(`📊 OpenSubtitles.org returnează ${subtitles.length} rezultate (scraping cu Cheerio)`);
-        
-        // Dacă nu găsim prin scraping, încercăm API-ul (dacă există token)
-        if (subtitles.length === 0 && token && OPENSUBTITLES_API_KEY) {
-            console.log(`⚠️ Nu s-au găsit prin scraping, încerc API-ul...`);
+        // METODA 1: OpenSubtitles.com API (dacă există token și API key)
+        if (token && OPENSUBTITLES_API_KEY) {
+            console.log(`📡 Încerc OpenSubtitles.com API (GRATUIT)...`);
             try {
                 const apiParams = { imdb_id: imdbIdClean };
                 if (season && episode) {
@@ -260,17 +186,83 @@ async function searchSubtitles(imdbId, season, episode, token) {
                         'Authorization': `Bearer ${token}`,
                         'User-Agent': OPENSUBTITLES_USER_AGENT
                     },
-                    timeout: 10000
+                    timeout: 15000
                 });
                 
                 const apiSubtitles = apiResponse.data.data || [];
-                console.log(`📊 API OpenSubtitles returnează ${apiSubtitles.length} rezultate`);
-                return apiSubtitles;
+                console.log(`✅ OpenSubtitles.com API: ${apiSubtitles.length} rezultate`);
+                
+                if (apiSubtitles.length > 0) {
+                    return apiSubtitles;
+                }
             } catch (apiError) {
-                console.log(`⚠️ API OpenSubtitles eșuat: ${apiError.message}`);
+                console.log(`⚠️ OpenSubtitles.com API eșuat: ${apiError.message}`);
+                if (apiError.response) {
+                    console.log(`⚠️ Status: ${apiError.response.status}, Data: ${JSON.stringify(apiError.response.data).substring(0, 200)}`);
+                }
             }
         }
         
+        // METODA 2: YIFY Subtitles (GRATUIT - fără API key)
+        console.log(`📡 Încerc YIFY Subtitles (GRATUIT)...`);
+        try {
+            const yifyUrl = `https://yifysubtitles.org/movie-imdb/${imdbId}`;
+            const yifyResponse = await axios.get(yifyUrl, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Referer': 'https://yifysubtitles.org/'
+                },
+                timeout: 20000,
+                maxRedirects: 5
+            });
+            
+            const $yify = cheerio.load(yifyResponse.data);
+            
+            // YIFY folosește link-uri către subtitrări
+            $yify('a[href*="/subtitles/"]').each((i, elem) => {
+                const href = $yify(elem).attr('href');
+                if (href && href.includes('/subtitles/')) {
+                    const match = href.match(/\/subtitles\/([^\/]+)/);
+                    if (match) {
+                        const subId = match[1];
+                        const langText = $yify(elem).text().trim().toLowerCase();
+                        
+                        // Mapare limbi
+                        const langMap = {
+                            'romanian': 'ro', 'română': 'ro', 'ro': 'ro',
+                            'english': 'en', 'engleză': 'en', 'en': 'en',
+                            'spanish': 'es', 'spaniolă': 'es', 'es': 'es',
+                            'french': 'fr', 'franceză': 'fr', 'fr': 'fr',
+                            'german': 'de', 'germană': 'de', 'de': 'de'
+                        };
+                        
+                        let lang = 'unknown';
+                        for (const [key, code] of Object.entries(langMap)) {
+                            if (langText.includes(key)) {
+                                lang = code;
+                                break;
+                            }
+                        }
+                        
+                        subtitles.push({
+                            id: `yify-${subId}`,
+                            attributes: {
+                                language: lang,
+                                files: [{ file_id: `yify-${subId}`, download_link: href }],
+                                download_count: 0
+                            }
+                        });
+                    }
+                }
+            });
+            
+            console.log(`✅ YIFY Subtitles: ${subtitles.length} rezultate`);
+        } catch (yifyError) {
+            console.log(`⚠️ YIFY eșuat: ${yifyError.message}`);
+        }
+        
+        console.log(`📊 TOTAL subtitrări găsite: ${subtitles.length}`);
         return subtitles;
     } catch (error) {
         console.error('❌ Eroare căutare subtitrări:', error.message);
