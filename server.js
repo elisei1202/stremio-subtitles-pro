@@ -1575,7 +1575,7 @@ async function handleSubtitlesRequest(req, res) {
         if (error.stack) console.error('Stack:', error.stack);
         res.json({ subtitles: [] });
     }
-});
+}
 
 // Endpoint traducere
 app.get('/translate/:apiKey/:fileId/:sourceLang/:targetLang', async (req, res) => {
