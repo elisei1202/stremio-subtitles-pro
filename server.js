@@ -380,6 +380,7 @@ async function verifyApiKey(req, res, next) {
 
 // Manifest dinamic per user
 function createUserManifest(userId, preferredLang, baseUrl, apiKey) {
+    const manifestUrl = `${baseUrl}/manifest/${apiKey}`;
     return {
         id: `ro.subtitle.translator.${userId}`,
         version: '2.0.0',
@@ -1453,129 +1454,144 @@ app.get('/manifest/:apiKey', async (req, res) => {
     }
 });
 
-// Subtitles handler - Stremio accesează această rută pentru subtitrări
-// IMPORTANT: Stremio construiește URL-ul relativ la manifest
-// Încercăm ambele formate pentru compatibilitate:
-// 1. /manifest/:apiKey/subtitles/:type/:id.json (relativ la manifest)
-// 2. /:apiKey/subtitles/:type/:id.json (ruta alternativă)
+// Subtitles handler - REFACUT COMPLET pentru funcționare corectă
+// Stremio accesează: /manifest/:apiKey/subtitles/:type/:id.json
 app.get('/manifest/:apiKey/subtitles/:type/:id.json', async (req, res) => {
-    handleSubtitlesRequest(req, res);
-});
-
-app.get('/:apiKey/subtitles/:type/:id.json', async (req, res) => {
-    handleSubtitlesRequest(req, res);
-});
-
-// Handler comun pentru subtitrări
-async function handleSubtitlesRequest(req, res) {
     try {
         const { apiKey, type, id } = req.params;
+        const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
         
-        console.log(`🔍 Stremio cere subtitrări: type=${type}, id=${id}, apiKey=${apiKey?.substring(0, 10)}...`);
+        console.log(`\n🔍 ===== CERERE SUBTITRĂRI =====`);
+        console.log(`Type: ${type}, ID: ${id}, API Key: ${apiKey?.substring(0, 15)}...`);
         
+        // Găsește user-ul
         const user = await User.findOne({ apiKey });
-
         if (!user) {
-            console.log(`❌ User nu există pentru apiKey: ${apiKey?.substring(0, 10)}...`);
-            return res.status(401).json({ subtitles: [] });
+            console.log(`❌ User nu există`);
+            return res.json({ subtitles: [] });
         }
 
-        console.log(`✅ User găsit: ${user.email}, limba preferată: ${user.preferredLanguage}`);
+        console.log(`✅ User: ${user.email}, Limba: ${user.preferredLanguage}`);
 
-        // Verificare abonament
         if (user.subscriptionStatus === 'expired') {
-            console.log(`⚠️ Abonament expirat pentru user: ${user.email}`);
+            console.log(`⚠️ Abonament expirat`);
             return res.json({ subtitles: [] });
         }
 
-        const [imdbId, season, episode] = id.split(':');
-        console.log(`📺 IMDb ID: ${imdbId}, Season: ${season || 'N/A'}, Episode: ${episode || 'N/A'}`);
+        // Parse ID: tt123456 sau tt123456:1:1 pentru seriale
+        const parts = id.split(':');
+        const imdbId = parts[0];
+        const season = parts[1] ? parseInt(parts[1]) : null;
+        const episode = parts[2] ? parseInt(parts[2]) : null;
         
-        const token = await getOpenSubtitlesToken();
+        console.log(`📺 IMDb: ${imdbId}, Season: ${season || 'N/A'}, Episode: ${episode || 'N/A'}`);
 
+        // Obține token OpenSubtitles
+        const token = await getOpenSubtitlesToken();
         if (!token) {
-            console.log('❌ Nu s-a putut obține token OpenSubtitles');
+            console.log(`❌ Nu s-a putut obține token`);
             return res.json({ subtitles: [] });
         }
 
-        const subtitles = await searchSubtitles(
-            imdbId,
-            season ? parseInt(season) : null,
-            episode ? parseInt(episode) : null,
-            token
-        );
+        // Caută subtitrări
+        const allSubtitles = await searchSubtitles(imdbId, season, episode, token);
+        console.log(`📝 Găsite ${allSubtitles.length} subtitrări totale`);
 
-        console.log(`📝 Găsite ${subtitles.length} subtitrări de la OpenSubtitles`);
-
-        const results = [];
         const targetLang = user.preferredLanguage;
+        const results = [];
 
-        // Subtitrări în limba preferată (originale)
-        const nativeSubs = subtitles.filter(sub => sub.attributes.language === targetLang);
+        // PASUL 1: Caută subtitrări NATIVE în limba preferată
+        const nativeSubs = allSubtitles.filter(sub => {
+            const lang = sub.attributes?.language;
+            return lang === targetLang && sub.attributes?.files?.[0]?.file_id;
+        });
 
-        for (const sub of nativeSubs) {
-            const fileId = sub.attributes.files[0].file_id;
+        if (nativeSubs.length > 0) {
+            console.log(`✅ Găsite ${nativeSubs.length} subtitrări NATIVE în ${targetLang}`);
+            // Ia cea mai bună (cea mai descărcată)
+            const bestSub = nativeSubs.sort((a, b) => 
+                (b.attributes.download_count || 0) - (a.attributes.download_count || 0)
+            )[0];
+            
+            const fileId = bestSub.attributes.files[0].file_id;
             results.push({
-                id: `native-${targetLang}-${fileId}`,
+                id: `native-${fileId}`,
                 lang: targetLang,
                 url: `https://rest.opensubtitles.org/download/${fileId}`,
-                label: `${SUPPORTED_LANGUAGES[targetLang]} - ${sub.attributes.release || 'OpenSubtitles'}`
+                label: `${SUPPORTED_LANGUAGES[targetLang] || targetLang.toUpperCase()} - OpenSubtitles`
             });
-        }
-
-        // Dacă nu există în limba preferată, pregătim traduceri din ORICE limbă disponibilă
-        if (nativeSubs.length === 0) {
-            // Grupează subtitrări pe limbi și ia cea mai bună din fiecare limbă
-            const subsByLang = {};
+        } else {
+            console.log(`⚠️ Nu există subtitrări native în ${targetLang}`);
             
-            subtitles
-                .filter(sub => sub.attributes.language !== targetLang)
-                .forEach(sub => {
-                    const lang = sub.attributes.language;
-                    if (!subsByLang[lang] || 
-                        (sub.attributes.download_count || 0) > (subsByLang[lang].attributes.download_count || 0)) {
-                        subsByLang[lang] = sub;
-                    }
-                });
-
-            // Prioritizează limbile: EN > ES > FR > DE > IT > rest
-            const langPriority = ['en', 'es', 'fr', 'de', 'it'];
-            const sortedLangs = Object.keys(subsByLang).sort((a, b) => {
-                const aPriority = langPriority.indexOf(a);
-                const bPriority = langPriority.indexOf(b);
-                if (aPriority !== -1 && bPriority !== -1) return aPriority - bPriority;
-                if (aPriority !== -1) return -1;
-                if (bPriority !== -1) return 1;
-                return (subsByLang[b].attributes.download_count || 0) - 
-                       (subsByLang[a].attributes.download_count || 0);
+            // PASUL 2: Caută subtitrări în ENGLEZĂ pentru traducere
+            const englishSubs = allSubtitles.filter(sub => {
+                const lang = sub.attributes?.language;
+                return lang === 'en' && sub.attributes?.files?.[0]?.file_id;
             });
 
-            // Oferă opțiuni de traducere din primele 5 limbi disponibile
-            for (const lang of sortedLangs.slice(0, 5)) {
-                const sub = subsByLang[lang];
-                const fileId = sub.attributes.files[0].file_id;
-                const sourceLangName = SUPPORTED_LANGUAGES[lang] || lang.toUpperCase();
-                const targetLangName = SUPPORTED_LANGUAGES[targetLang] || targetLang.toUpperCase();
+            if (englishSubs.length > 0) {
+                console.log(`✅ Găsite ${englishSubs.length} subtitrări în ENGLEZĂ - voi traduce`);
+                // Ia cea mai bună subtitrare în engleză
+                const bestSub = englishSubs.sort((a, b) => 
+                    (b.attributes.download_count || 0) - (a.attributes.download_count || 0)
+                )[0];
+                
+                const fileId = bestSub.attributes.files[0].file_id;
+                const translateUrl = `${baseUrl}/translate/${apiKey}/${fileId}/en/${targetLang}`;
                 
                 results.push({
-                    id: `translated-${lang}-${targetLang}-${fileId}`,
+                    id: `translated-en-${targetLang}-${fileId}`,
                     lang: targetLang,
-                    url: `${process.env.BASE_URL || 'http://localhost:7000'}/translate/${apiKey}/${fileId}/${lang}/${targetLang}`,
-                    label: `🤖 ${targetLangName} (AI: ${sourceLangName} → ${targetLangName}) - ${sub.attributes.release || 'OpenSubtitles'} ⭐${sub.attributes.download_count || 0}`
+                    url: translateUrl,
+                    label: `🤖 ${SUPPORTED_LANGUAGES[targetLang] || targetLang.toUpperCase()} (AI tradus din English)`
                 });
-            }
+            } else {
+                console.log(`⚠️ Nu există subtitrări în engleză`);
+                // Încearcă orice altă limbă disponibilă
+                const otherSubs = allSubtitles.filter(sub => {
+                    const lang = sub.attributes?.language;
+                    return lang && lang !== targetLang && sub.attributes?.files?.[0]?.file_id;
+                });
 
-            console.log(`🔄 Oferite ${results.length} opțiuni de traducere din: ${sortedLangs.slice(0, 5).join(', ')}`);
+                if (otherSubs.length > 0) {
+                    const bestSub = otherSubs.sort((a, b) => 
+                        (b.attributes.download_count || 0) - (a.attributes.download_count || 0)
+                    )[0];
+                    
+                    const sourceLang = bestSub.attributes.language;
+                    const fileId = bestSub.attributes.files[0].file_id;
+                    const translateUrl = `${baseUrl}/translate/${apiKey}/${fileId}/${sourceLang}/${targetLang}`;
+                    
+                    const sourceLangName = SUPPORTED_LANGUAGES[sourceLang] || sourceLang.toUpperCase();
+                    console.log(`✅ Găsit subtitrare în ${sourceLang} - voi traduce în ${targetLang}`);
+                    
+                    results.push({
+                        id: `translated-${sourceLang}-${targetLang}-${fileId}`,
+                        lang: targetLang,
+                        url: translateUrl,
+                        label: `🤖 ${SUPPORTED_LANGUAGES[targetLang] || targetLang.toUpperCase()} (AI tradus din ${sourceLangName})`
+                    });
+                }
+            }
         }
 
-        console.log(`✅ Returnez ${results.length} subtitrări pentru limba: ${targetLang}`);
+        console.log(`✅ Returnez ${results.length} subtitrări`);
+        console.log(`=====================================\n`);
+        
         res.json({ subtitles: results });
     } catch (error) {
-        console.error('❌ Eroare subtitles handler:', error.message);
-        if (error.stack) console.error('Stack:', error.stack);
+        console.error(`❌ EROARE SUBTITRĂRI: ${error.message}`);
+        if (error.stack) console.error(error.stack);
         res.json({ subtitles: [] });
     }
-}
+});
+
+// Rută alternativă pentru compatibilitate
+app.get('/:apiKey/subtitles/:type/:id.json', async (req, res) => {
+    // Redirect către ruta corectă
+    const { apiKey, type, id } = req.params;
+    res.redirect(`/manifest/${apiKey}/subtitles/${type}/${id}.json`);
+});
 
 // Endpoint traducere
 app.get('/translate/:apiKey/:fileId/:sourceLang/:targetLang', async (req, res) => {
