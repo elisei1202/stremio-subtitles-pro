@@ -1715,7 +1715,7 @@ app.get('/download-subtitle/:apiKey/:fileId', async (req, res) => {
         console.log(`📥 Descărcare subtitrare YIFY: fileId=${fileId}`);
 
         // Descarcă subtitrare YIFY
-        const subtitleContent = await downloadSubtitle(fileId, null);
+        const subtitleContent = await downloadSubtitle(fileId);
         
         if (!subtitleContent) {
             return res.status(404).send('Subtitrare negăsită');
@@ -1762,8 +1762,7 @@ app.get('/translate/:apiKey/:fileId/:sourceLang/:targetLang', async (req, res) =
 
         console.log(`⏳ Traducere nouă: ${sourceLang} -> ${targetLang}`);
 
-        const token = await getOpenSubtitlesToken();
-        const originalSrt = await downloadSubtitle(fileId, token);
+        const originalSrt = await downloadSubtitle(fileId);
 
         if (!originalSrt) {
             return res.status(404).send('Subtitrare negăsită');
