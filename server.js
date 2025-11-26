@@ -1521,6 +1521,14 @@ app.get('/manifest/:apiKey/subtitles/:type/:id.json', async (req, res) => {
         // Caută subtitrări
         const allSubtitles = await searchSubtitles(imdbId, season, episode, token);
         console.log(`📝 Găsite ${allSubtitles.length} subtitrări totale`);
+        
+        if (allSubtitles.length > 0) {
+            console.log(`📋 Primele 3 subtitrări (debug):`, JSON.stringify(allSubtitles.slice(0, 3).map(s => ({
+                lang: s.attributes?.language,
+                file_id: s.attributes?.files?.[0]?.file_id,
+                download_count: s.attributes?.download_count
+            })), null, 2));
+        }
 
         const targetLang = user.preferredLanguage;
         const results = [];
@@ -1528,7 +1536,9 @@ app.get('/manifest/:apiKey/subtitles/:type/:id.json', async (req, res) => {
         // PASUL 1: Caută subtitrări NATIVE în limba preferată
         const nativeSubs = allSubtitles.filter(sub => {
             const lang = sub.attributes?.language;
-            return lang === targetLang && sub.attributes?.files?.[0]?.file_id;
+            const hasFile = sub.attributes?.files?.[0]?.file_id;
+            console.log(`🔍 Verific subtitrare: lang=${lang}, target=${targetLang}, hasFile=${!!hasFile}`);
+            return lang === targetLang && hasFile;
         });
 
         if (nativeSubs.length > 0) {
