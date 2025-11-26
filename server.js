@@ -1457,11 +1457,21 @@ app.get('/manifest/:apiKey', async (req, res) => {
 // Subtitles handler - REFACUT COMPLET pentru funcționare corectă
 // Stremio accesează: /manifest/:apiKey/subtitles/:type/:id.json
 app.get('/manifest/:apiKey/subtitles/:type/:id.json', async (req, res) => {
+    // Set headers imediat
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Content-Type', 'application/json');
+    
+    console.log(`\n🔔🔔🔔 SUBTITRĂRI APELAT! 🔔🔔🔔`);
+    console.log(`Full URL: ${req.protocol}://${req.get('host')}${req.originalUrl}`);
+    console.log(`Method: ${req.method}`);
+    console.log(`Headers:`, JSON.stringify(req.headers, null, 2));
+    
     try {
         const { apiKey, type, id } = req.params;
         const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
         
-        console.log(`\n🔍 ===== CERERE SUBTITRĂRI =====`);
+        console.log(`🔍 ===== CERERE SUBTITRĂRI =====`);
         console.log(`Type: ${type}, ID: ${id}, API Key: ${apiKey?.substring(0, 15)}...`);
         
         // Găsește user-ul
