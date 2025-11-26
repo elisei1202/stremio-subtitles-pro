@@ -1584,20 +1584,19 @@ app.get('/manifest/:apiKey/subtitles/:type/:id.json', async (req, res) => {
 
         if (nativeSubs.length > 0) {
             console.log(`✅ Găsite ${nativeSubs.length} subtitrări NATIVE în ${targetLang}`);
-            // Ia cea mai bună (cea mai descărcată)
-            const bestSub = nativeSubs.sort((a, b) => 
-                (b.attributes.download_count || 0) - (a.attributes.download_count || 0)
-            )[0];
-            
-            const fileId = bestSub.attributes.files[0].file_id;
-            // Folosim proxy endpoint pentru subtitrări native - Stremio nu poate descărca direct de la OpenSubtitles
-            const proxyUrl = `${baseUrl}/download-subtitle/${apiKey}/${fileId}`;
-            results.push({
-                id: `native-${fileId}`,
-                lang: targetLang,
-                url: proxyUrl,
-                label: `${SUPPORTED_LANGUAGES[targetLang] || targetLang.toUpperCase()} - OpenSubtitles`
-            });
+            // Returnează toate subtitrările native (nu doar cea mai bună) pentru mai multe opțiuni
+            for (const sub of nativeSubs.slice(0, 5)) { // Maximum 5 opțiuni
+                const fileId = sub.attributes.files?.[0]?.file_id;
+                if (!fileId) continue;
+                
+                const proxyUrl = `${baseUrl}/download-subtitle/${apiKey}/${fileId}`;
+                results.push({
+                    id: `native-${targetLang}-${fileId}`,
+                    lang: targetLang,
+                    url: proxyUrl,
+                    label: `${SUPPORTED_LANGUAGES[targetLang] || targetLang.toUpperCase()} - OpenSubtitles`
+                });
+            }
         } else {
             console.log(`⚠️ Nu există subtitrări native în ${targetLang}`);
             
@@ -1654,8 +1653,10 @@ app.get('/manifest/:apiKey/subtitles/:type/:id.json', async (req, res) => {
         }
 
         console.log(`✅ Returnez ${results.length} subtitrări`);
+        console.log(`📋 Subtitrări returnate:`, JSON.stringify(results, null, 2));
         console.log(`=====================================\n`);
         
+        // IMPORTANT: Stremio așteaptă exact formatul { subtitles: [...] }
         res.json({ subtitles: results });
     } catch (error) {
         console.error(`❌ EROARE SUBTITRĂRI: ${error.message}`);
