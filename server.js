@@ -1707,12 +1707,20 @@ app.get('/manifest/:apiKey/subtitles/:type/:id.json', async (req, res) => {
                 const fileId = sub.attributes.files?.[0]?.file_id;
                 if (!fileId) continue;
                 
-                const proxyUrl = `${baseUrl}/download-subtitle/${apiKey}/${fileId}`;
+                // Extrage slug-ul din download_link sau din atributul slug
+                const downloadLink = sub.attributes.files?.[0]?.download_link || '';
+                const slug = sub.attributes.files?.[0]?.slug || (downloadLink.match(/\/subtitles\/([^\/]+)/)?.[1]);
+                
+                // Construiește URL-ul cu slug-ul ca query param
+                const proxyUrl = slug 
+                    ? `${baseUrl}/download-subtitle/${apiKey}/${fileId}?slug=${encodeURIComponent(slug)}`
+                    : `${baseUrl}/download-subtitle/${apiKey}/${fileId}`;
+                
                 results.push({
                     id: `native-${targetLang}-${fileId}`,
                     lang: targetLang,
                     url: proxyUrl,
-                    label: `${SUPPORTED_LANGUAGES[targetLang] || targetLang.toUpperCase()} - OpenSubtitles`
+                    label: `${SUPPORTED_LANGUAGES[targetLang] || targetLang.toUpperCase()} - YIFY`
                 });
             }
         } else {
