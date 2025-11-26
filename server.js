@@ -431,7 +431,13 @@ function createUserManifest(userId, preferredLang, baseUrl, apiKey) {
         version: '2.0.0',
         name: `Subtitrări ${SUPPORTED_LANGUAGES[preferredLang]} AI`,
         description: `Caută și traduce automat subtitrări în ${SUPPORTED_LANGUAGES[preferredLang]} folosind AI. Suportă toate limbile majore.`,
-        resources: ['subtitles'],
+        resources: [
+            {
+                name: 'subtitles',
+                types: ['movie', 'series'],
+                idPrefixes: ['tt']
+            }
+        ],
         types: ['movie', 'series'],
         catalogs: [],
         idPrefixes: ['tt'],
