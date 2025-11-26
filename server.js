@@ -1534,21 +1534,32 @@ app.get('/manifest/:apiKey/subtitles/:type/:id.json', async (req, res) => {
         }
 
         // Parse ID: tt123456 sau tt123456:1:1 pentru seriale
+        // IMPORTANT: ID-ul vine în format tt123456 sau tt123456:1:1
         const parts = id.split(':');
-        const imdbId = parts[0];
+        let imdbId = parts[0];
+        
+        // Asigură-te că imdbId începe cu 'tt'
+        if (!imdbId.startsWith('tt')) {
+            imdbId = 'tt' + imdbId;
+        }
+        
         const season = parts[1] ? parseInt(parts[1]) : null;
         const episode = parts[2] ? parseInt(parts[2]) : null;
         
         console.log(`📺 IMDb: ${imdbId}, Season: ${season || 'N/A'}, Episode: ${episode || 'N/A'}`);
 
         // Obține token OpenSubtitles
+        console.log(`🔑 Obțin token OpenSubtitles...`);
         const token = await getOpenSubtitlesToken();
         if (!token) {
-            console.log(`❌ Nu s-a putut obține token`);
+            console.log(`❌ Nu s-a putut obține token OpenSubtitles`);
+            console.log(`❌ Verifică OPENSUBTITLES_API_KEY în variabilele de mediu`);
             return res.json({ subtitles: [] });
         }
+        console.log(`✅ Token obținut: ${token.substring(0, 20)}...`);
 
         // Caută subtitrări
+        console.log(`🔍 Căutare subtitrări pentru: ${imdbId}...`);
         const allSubtitles = await searchSubtitles(imdbId, season, episode, token);
         console.log(`📝 Găsite ${allSubtitles.length} subtitrări totale`);
         
