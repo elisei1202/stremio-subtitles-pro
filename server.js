@@ -1,3 +1,8 @@
+// Polyfill pentru ReadableStream (necesar pentru Node.js < 18.3)
+if (typeof ReadableStream === 'undefined') {
+    global.ReadableStream = require('stream/web').ReadableStream;
+}
+
 require('dotenv').config();
 const { addonBuilder, serveHTTP } = require('stremio-addon-sdk');
 const axios = require('axios');
