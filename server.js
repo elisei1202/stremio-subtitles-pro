@@ -1,11 +1,40 @@
-// Polyfill pentru ReadableStream (necesar pentru compatibilitate)
+// Polyfill-uri pentru Web Streams API (necesare pentru undici/axios în Node.js < 20)
+// Trebuie să fie înainte de orice require!
+
+// Polyfill pentru File
+if (typeof File === 'undefined') {
+    try {
+        global.File = class File {
+            constructor(blobParts, name, options) {
+                this.name = name;
+                this.size = 0;
+                this.type = options?.type || '';
+                this.lastModified = options?.lastModified || Date.now();
+            }
+        };
+    } catch (e) {
+        console.error('⚠️ Nu s-a putut crea File polyfill:', e.message);
+    }
+}
+
+// Polyfill pentru ReadableStream
 if (typeof ReadableStream === 'undefined') {
     try {
-        global.ReadableStream = require('stream/web').ReadableStream;
+        // Node.js 18.3+
+        const streamWeb = require('stream/web');
+        if (streamWeb.ReadableStream) {
+            global.ReadableStream = streamWeb.ReadableStream;
+        } else {
+            throw new Error('ReadableStream not in stream/web');
+        }
     } catch (e) {
-        // Dacă stream/web nu există, încercăm o altă metodă
-        const { ReadableStream: RS } = require('web-streams-polyfill/ponyfill/es6');
-        global.ReadableStream = RS;
+        // Fallback pentru Node.js mai vechi
+        try {
+            const { ReadableStream: RS } = require('web-streams-polyfill/ponyfill/es6');
+            global.ReadableStream = RS;
+        } catch (e2) {
+            console.error('❌ Nu s-a putut încărca ReadableStream polyfill:', e2.message);
+        }
     }
 }
 
