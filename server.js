@@ -1575,7 +1575,7 @@ app.get('/manifest/:apiKey/subtitles/:type/:id.json', async (req, res) => {
 
         // Caută subtitrări
         console.log(`🔍 Căutare subtitrări pentru: ${imdbId}...`);
-        const allSubtitles = await searchSubtitles(imdbId, season, episode, token);
+        const allSubtitles = await searchSubtitles(imdbId, season, episode);
         console.log(`📝 Găsite ${allSubtitles.length} subtitrări totale`);
         
         if (allSubtitles.length > 0) {
@@ -1788,6 +1788,10 @@ app.get('/checkout', async (req, res) => {
 
         if (!user) {
             return res.status(404).send('User negăsit');
+        }
+
+        if (!stripe) {
+            return res.status(500).send('Stripe nu este configurat');
         }
 
         const session = await stripe.checkout.sessions.create({
