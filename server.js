@@ -1573,20 +1573,6 @@ app.get('/manifest/:apiKey/subtitles/:type/:id.json', async (req, res) => {
         
         console.log(`📺 IMDb: ${imdbId}, Season: ${season || 'N/A'}, Episode: ${episode || 'N/A'}`);
 
-        // Obține token pentru OpenSubtitles.com API (dacă există API key)
-        let token = null;
-        if (OPENSUBTITLES_API_KEY) {
-            console.log(`🔑 Obțin token OpenSubtitles.com API...`);
-            token = await getOpenSubtitlesToken();
-            if (token) {
-                console.log(`✅ Token obținut cu succes`);
-            } else {
-                console.log(`⚠️ Nu s-a putut obține token - va folosi YIFY`);
-            }
-        } else {
-            console.log(`⚠️ Nu există OPENSUBTITLES_API_KEY - va folosi YIFY`);
-        }
-
         // Caută subtitrări
         console.log(`🔍 Căutare subtitrări pentru: ${imdbId}...`);
         const allSubtitles = await searchSubtitles(imdbId, season, episode, token);
