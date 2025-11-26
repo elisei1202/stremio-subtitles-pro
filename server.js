@@ -11,8 +11,6 @@ const stripe = process.env.STRIPE_SECRET_KEY ? require('stripe')(process.env.STR
 
 // Configurare
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const OPENSUBTITLES_API_KEY = process.env.OPENSUBTITLES_API_KEY;
-const OPENSUBTITLES_USER_AGENT = 'StremioMultiLangSubtitles v2.0';
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 const SUBSCRIPTION_PRICE = 1.00; // $1 pentru 3 luni
 
@@ -135,7 +133,7 @@ function getCacheKey(fileId, sourceLang, targetLang) {
 }
 
 // Căutare subtitrări folosind DOAR YIFY (GRATUIT)
-async function searchSubtitles(imdbId, season, episode, token) {
+async function searchSubtitles(imdbId, season, episode) {
     try {
         console.log(`🔍 Căutare YIFY Subtitles: imdb_id=${imdbId}, season=${season || 'N/A'}, episode=${episode || 'N/A'}`);
         
@@ -214,7 +212,7 @@ async function searchSubtitles(imdbId, season, episode, token) {
 }
 
 // Descărcare subtitrare de la YIFY
-async function downloadSubtitle(fileId, token) {
+async function downloadSubtitle(fileId) {
     try {
         console.log(`📥 Descărcare YIFY subtitrare: fileId=${fileId}`);
         
@@ -1703,7 +1701,7 @@ app.get('/:apiKey/subtitles/:type/:id.json', async (req, res) => {
     res.redirect(`/manifest/${apiKey}/subtitles/${type}/${id}.json`);
 });
 
-// Endpoint pentru descărcare directă subtitrări native (proxy pentru OpenSubtitles)
+// Endpoint pentru descărcare directă subtitrări native (YIFY)
 app.get('/download-subtitle/:apiKey/:fileId', async (req, res) => {
     try {
         const { apiKey, fileId } = req.params;
