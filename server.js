@@ -206,6 +206,8 @@ async function searchSubtitles(imdbId, season, episode, token) {
 
 async function downloadSubtitle(fileId, token) {
     try {
+        console.log(`📥 Descărcare subtitrare OpenSubtitles: fileId=${fileId}`);
+        
         const response = await axios.post('https://api.opensubtitles.com/api/v1/download', {
             file_id: fileId
         }, {
@@ -215,18 +217,46 @@ async function downloadSubtitle(fileId, token) {
                 'User-Agent': OPENSUBTITLES_USER_AGENT,
                 'Content-Type': 'application/json'
             },
-            timeout: 10000
+            timeout: 15000,
+            maxRedirects: 5
         });
 
-        const downloadUrl = response.data.link;
+        // Verifică structura răspunsului
+        console.log(`📋 Response download OpenSubtitles:`, {
+            hasLink: !!response.data?.link,
+            hasFileId: !!response.data?.file_id,
+            keys: Object.keys(response.data || {})
+        });
+
+        const downloadUrl = response.data?.link || response.data?.data?.link;
+        
+        if (!downloadUrl) {
+            console.error('❌ Nu s-a găsit link de descărcare în răspuns:', JSON.stringify(response.data, null, 2));
+            return null;
+        }
+
+        console.log(`🔗 Descărcare de la URL: ${downloadUrl.substring(0, 100)}...`);
+
+        // Descarcă subtitrare
         const subtitleResponse = await axios.get(downloadUrl, {
             responseType: 'arraybuffer',
-            timeout: 30000
+            timeout: 30000,
+            maxRedirects: 5,
+            validateStatus: function (status) {
+                return status >= 200 && status < 400; // Acceptă și redirects
+            }
         });
 
-        return subtitleResponse.data.toString('utf-8');
+        const subtitleContent = Buffer.from(subtitleResponse.data).toString('utf-8');
+        console.log(`✅ Subtitrare descărcată: ${subtitleContent.length} caractere`);
+        
+        return subtitleContent;
     } catch (error) {
         console.error('❌ Eroare descărcare subtitrare:', error.message);
+        if (error.response) {
+            console.error('❌ Response status:', error.response.status);
+            console.error('❌ Response data:', JSON.stringify(error.response.data, null, 2));
+        }
         return null;
     }
 }
@@ -1549,10 +1579,12 @@ app.get('/manifest/:apiKey/subtitles/:type/:id.json', async (req, res) => {
             )[0];
             
             const fileId = bestSub.attributes.files[0].file_id;
+            // Folosim proxy endpoint pentru subtitrări native - Stremio nu poate descărca direct de la OpenSubtitles
+            const proxyUrl = `${baseUrl}/download-subtitle/${apiKey}/${fileId}`;
             results.push({
                 id: `native-${fileId}`,
                 lang: targetLang,
-                url: `https://rest.opensubtitles.org/download/${fileId}`,
+                url: proxyUrl,
                 label: `${SUPPORTED_LANGUAGES[targetLang] || targetLang.toUpperCase()} - OpenSubtitles`
             });
         } else {
@@ -1626,6 +1658,43 @@ app.get('/:apiKey/subtitles/:type/:id.json', async (req, res) => {
     // Redirect către ruta corectă
     const { apiKey, type, id } = req.params;
     res.redirect(`/manifest/${apiKey}/subtitles/${type}/${id}.json`);
+});
+
+// Endpoint pentru descărcare directă subtitrări native (proxy pentru OpenSubtitles)
+app.get('/download-subtitle/:apiKey/:fileId', async (req, res) => {
+    try {
+        const { apiKey, fileId } = req.params;
+        
+        // Verificare user
+        const user = await User.findOne({ apiKey });
+        if (!user) {
+            return res.status(401).send('API Key invalid');
+        }
+
+        console.log(`📥 Descărcare subtitrare nativă: fileId=${fileId}`);
+
+        // Obține token OpenSubtitles
+        const token = await getOpenSubtitlesToken();
+        if (!token) {
+            return res.status(500).send('Eroare la autentificare OpenSubtitles');
+        }
+
+        // Descarcă subtitrare folosind funcția existentă
+        const subtitleContent = await downloadSubtitle(fileId, token);
+        
+        if (!subtitleContent) {
+            return res.status(404).send('Subtitrare negăsită');
+        }
+
+        // Servește subtitrare direct către Stremio
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="subtitle-${fileId}.srt"`);
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.send(subtitleContent);
+    } catch (error) {
+        console.error('❌ Eroare descărcare subtitrare:', error);
+        res.status(500).send('Eroare la descărcare subtitrare');
+    }
 });
 
 // Endpoint traducere
