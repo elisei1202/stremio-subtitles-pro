@@ -162,15 +162,20 @@ async function getOpenSubtitlesToken() {
 
 async function searchSubtitles(imdbId, season, episode, token) {
     try {
+        const imdbIdClean = imdbId.replace(/^tt/, ''); // Elimină 'tt' dacă există
         const params = {
-            imdb_id: imdbId.replace('tt', ''),
-            languages: Object.keys(SUPPORTED_LANGUAGES).join(','),
+            imdb_id: imdbIdClean,
         };
+
+        // Nu filtram pe limbi la căutare - vrem toate
+        // languages: Object.keys(SUPPORTED_LANGUAGES).join(','),
 
         if (season && episode) {
             params.season_number = season;
             params.episode_number = episode;
         }
+
+        console.log(`🔍 Căutare OpenSubtitles: imdb_id=${params.imdb_id}, season=${season || 'N/A'}, episode=${episode || 'N/A'}`);
 
         const response = await axios.get('https://api.opensubtitles.com/api/v1/subtitles', {
             params: params,
@@ -179,12 +184,22 @@ async function searchSubtitles(imdbId, season, episode, token) {
                 'Authorization': `Bearer ${token}`,
                 'User-Agent': OPENSUBTITLES_USER_AGENT
             },
-            timeout: 10000
+            timeout: 15000
         });
 
-        return response.data.data || [];
+        const subtitles = response.data.data || [];
+        console.log(`📊 OpenSubtitles returnează ${subtitles.length} rezultate`);
+        if (subtitles.length > 0) {
+            console.log(`📋 Primele limbi găsite:`, [...new Set(subtitles.slice(0, 10).map(s => s.attributes?.language))].join(', '));
+        }
+        
+        return subtitles;
     } catch (error) {
         console.error('❌ Eroare căutare subtitrări:', error.message);
+        if (error.response) {
+            console.error('❌ Response status:', error.response.status);
+            console.error('❌ Response data:', JSON.stringify(error.response.data, null, 2));
+        }
         return [];
     }
 }
