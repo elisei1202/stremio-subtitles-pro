@@ -27,7 +27,8 @@
     "mongoose": "^8.0.3",
     "srt-parser-2": "1.1.9",
     "stremio-addon-sdk": "^1.6.10",
-    "stripe": "^14.9.0"
+    "stripe": "^14.9.0",
+    "web-streams-polyfill": "^4.2.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"

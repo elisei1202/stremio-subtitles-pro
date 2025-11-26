@@ -1,6 +1,12 @@
-// Polyfill pentru ReadableStream (necesar pentru Node.js < 18.3)
+// Polyfill pentru ReadableStream (necesar pentru compatibilitate)
 if (typeof ReadableStream === 'undefined') {
-    global.ReadableStream = require('stream/web').ReadableStream;
+    try {
+        global.ReadableStream = require('stream/web').ReadableStream;
+    } catch (e) {
+        // Dacă stream/web nu există, încercăm o altă metodă
+        const { ReadableStream: RS } = require('web-streams-polyfill/ponyfill/es6');
+        global.ReadableStream = RS;
+    }
 }
 
 require('dotenv').config();
